@@ -22,7 +22,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
-            android:text="Anti-Blur Video & Foto + Auto-Split Tanpa Batas Durasi"
+            android:text="Anti-Blur Video + Foto + Auto-Split Tanpa Batas Durasi"
             android:textColor="#94A3B8"
             android:textSize="13sp" />
 
@@ -103,7 +103,7 @@
             android:layout_marginTop="16dp"
             android:backgroundTint="#F59E0B"
             android:enabled="false"
-            android:text="PROSES HD+ & AUTO SPLIT"
+            android:text="PROSES HD+ / AUTO SPLIT"
             android:textColor="#0F172A"
             android:textStyle="bold" />
 
