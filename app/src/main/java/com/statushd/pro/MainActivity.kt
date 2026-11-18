@@ -30,7 +30,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var progressBar: ProgressBar
     private lateinit var btnProcess: Button
     private lateinit var btnShareWa: Button
+    private lateinit var rgQualityMode: RadioGroup
+    private lateinit var rbAutoBypass: RadioButton
     private lateinit var rgSplitInterval: RadioGroup
+    private lateinit var rb15Sec: RadioButton
     private lateinit var rb30Sec: RadioButton
 
     private var selectedUri: Uri? = null
@@ -68,7 +71,10 @@ class MainActivity : AppCompatActivity() {
         progressBar = findViewById(R.id.progressBar)
         btnProcess = findViewById(R.id.btnProcess)
         btnShareWa = findViewById(R.id.btnShareWa)
+        rgQualityMode = findViewById(R.id.rgQualityMode)
+        rbAutoBypass = findViewById(R.id.rbAutoBypass)
         rgSplitInterval = findViewById(R.id.rgSplitInterval)
+        rb15Sec = findViewById(R.id.rb15Sec)
         rb30Sec = findViewById(R.id.rb30Sec)
 
         findViewById<Button>(R.id.btnPickVideo).setOnClickListener {
@@ -80,9 +86,11 @@ class MainActivity : AppCompatActivity() {
         }
 
         rgSplitInterval.setOnCheckedChangeListener { _, _ ->
-            if (isVideoMode && selectedUri != null) {
-                updateVideoSplitPreview()
-            }
+            if (isVideoMode && selectedUri != null) updateVideoSplitPreview()
+        }
+
+        rgQualityMode.setOnCheckedChangeListener { _, _ ->
+            if (isVideoMode && selectedUri != null) updateVideoSplitPreview()
         }
 
         btnProcess.setOnClickListener {
@@ -96,7 +104,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun getSplitInterval(): Int {
-        return if (rb30Sec.isChecked) 30 else 60
+        return when {
+            rb15Sec.isChecked -> 15
+            rb30Sec.isChecked -> 30
+            else -> 60
+        }
     }
 
     private fun getFileSizeKb(uri: Uri): Long {
@@ -114,12 +126,20 @@ class MainActivity : AppCompatActivity() {
 
     private fun calculateOptimalVideoParams(durationSec: Int, interval: Int): Triple<Int, Int, String> {
         val effectiveClipSec = minOf(max(1, durationSec), interval)
-        // Kunci ukuran tiap klip di ~8.3 MB (di bawah ambang batas 10 MB kompresor internal WhatsApp)
-        val bitrateKbps = ((8.3 * 8192.0) / effectiveClipSec - 128.0).toInt().coerceIn(1200, 4500)
-        // Gunakan 1920p Full HD untuk klip <= 35 detik, atau 1440p untuk klip penuh 60 detik
-        val maxSidePx = if (effectiveClipSec <= 35) 1920 else 1440
-        val label = "${maxSidePx}p High-Profile @ ${String.format("%.2f", bitrateKbps / 1000.0)} Mbps (~8.3 MB)"
-        return Triple(bitrateKbps, maxSidePx, label)
+        return if (rbAutoBypass.isChecked) {
+            // Batas atas pass-through Status WA: max sisi 1280px (720p HD) & ukuran ~4.9 MB per klip
+            // Agar WhatsApp TIDAK melakukan downscale paksa ke 480p setelah upload selesai
+            val targetSizeMb = 4.9
+            val bitrateKbps = ((targetSizeMb * 8192.0) / effectiveClipSec - 112.0).toInt().coerceIn(750, 3200)
+            val label = "1280p Pass-Through @ ${String.format("%.2f", bitrateKbps / 1000.0)} Mbps (~4.9 MB)"
+            Triple(bitrateKbps, 1280, label)
+        } else {
+            // Mode 1080p: ukuran ~8.8 MB per klip (pengguna wajib ketuk ikon HD di atas layar WA)
+            val targetSizeMb = 8.8
+            val bitrateKbps = ((targetSizeMb * 8192.0) / effectiveClipSec - 128.0).toInt().coerceIn(1300, 4800)
+            val label = "1920p Full HD @ ${String.format("%.2f", bitrateKbps / 1000.0)} Mbps (~8.8 MB)"
+            Triple(bitrateKbps, 1920, label)
+        }
     }
 
     private fun analyzeVideo(uri: Uri) {
@@ -160,9 +180,9 @@ class MainActivity : AppCompatActivity() {
             timelinePreview.append("• ... s/d Part $totalParts (${videoDurationSec}s)\n")
         }
 
-        tvMediaInfo.text = "MODE: VIDEO HD+ (HIGH-PROFILE ANTI-BLUR)\n" +
+        tvMediaInfo.text = "MODE: VIDEO HD+ (ANTI-DOWNSCALE SERVER WA)\n" +
                 "Asli: ${savedWidth}x${savedHeight} (${savedOriginalSizeKb} KB) | Durasi: ${videoDurationSec} Detik\n" +
-                "Target HD+: $targetLabel | Total: $totalParts Bagian\n\n" +
+                "Target: $targetLabel | Total: $totalParts Bagian\n\n" +
                 "Rincian Timeline:\n$timelinePreview"
     }
 
@@ -203,7 +223,7 @@ class MainActivity : AppCompatActivity() {
         btnProcess.isEnabled = false
         btnShareWa.isEnabled = false
         progressBar.progress = 2
-        tvStatusLog.text = "Merender Video HD+ High Profile..."
+        tvStatusLog.text = "Merender Video HD+ Presisi Tinggi..."
 
         scope.launch(Dispatchers.IO) {
             val outDir = prepareOutputDir()
@@ -214,8 +234,7 @@ class MainActivity : AppCompatActivity() {
             val (videoBitrateKbps, maxSidePx, _) = calculateOptimalVideoParams(videoDurationSec, interval)
             val gopFrames = 30 * minOf(videoDurationSec, interval)
 
-            // Gunakan Lanczos + Unsharp + libx264 High Profile Level 4.1 (sama dengan pipeline Foto HD+ yang terbukti tajam)
-            val vfFilter = "scale='if(lt(iw,ih),-2,$maxSidePx)':'if(lt(iw,ih),$maxSidePx,-2)':flags=lanczos,unsharp=5:5:0.8:3:3:0.0,format=yuv420p"
+            val vfFilter = "scale='if(lt(iw,ih),-2,$maxSidePx)':'if(lt(iw,ih),$maxSidePx,-2)':flags=lanczos,unsharp=3:3:0.65:3:3:0.0,format=yuv420p"
 
             FFmpegKitConfig.enableStatisticsCallback { stats: Statistics ->
                 val timeSec = (stats.time / 1000.0).toInt()
@@ -226,31 +245,18 @@ class MainActivity : AppCompatActivity() {
                 }
             }
 
+            // Preset medium + B-frames (-bf 2) + aq-mode 3: menjaga teks & area gelap tetap tajam di ukuran ~4.9 MB
             val cmd = "-y -i \"$safeInputPath\" " +
                     "-vf \"$vfFilter\" " +
                     "-r 30 -g $gopFrames " +
-                    "-c:v libx264 -preset superfast -profile:v high -level 4.1 -threads 8 " +
-                    "-b:v ${videoBitrateKbps}k -maxrate ${videoBitrateKbps + 250}k -bufsize ${videoBitrateKbps * 2}k " +
-                    "-c:a aac -b:a 128k -ac 2 " +
+                    "-c:v libx264 -preset medium -profile:v high -level 4.1 -threads 8 " +
+                    "-bf 2 -aq-mode 3 " +
+                    "-b:v ${videoBitrateKbps}k -maxrate ${videoBitrateKbps + 150}k -bufsize ${videoBitrateKbps * 2}k " +
+                    "-c:a aac -b:a 112k -ac 2 " +
                     "-f segment -segment_time $interval -reset_timestamps 1 " +
-                    "-segment_format_options movflags=+faststart " +
                     "\"$outputPattern\""
 
-            var session = FFmpegKit.execute(cmd)
-
-            // Fallback tanpa segment_format_options jika dibutuhkan
-            if (!ReturnCode.isSuccess(session.returnCode)) {
-                outDir.listFiles()?.forEach { it.delete() }
-                val fallbackCmd = "-y -i \"$safeInputPath\" " +
-                        "-vf \"$vfFilter\" " +
-                        "-r 30 -g $gopFrames " +
-                        "-c:v libx264 -preset superfast -profile:v high -level 4.1 -threads 8 " +
-                        "-b:v ${videoBitrateKbps}k -maxrate ${videoBitrateKbps + 250}k -bufsize ${videoBitrateKbps * 2}k " +
-                        "-c:a aac -b:a 128k -ac 2 " +
-                        "-f segment -segment_time $interval -reset_timestamps 1 " +
-                        "\"$outputPattern\""
-                session = FFmpegKit.execute(fallbackCmd)
-            }
+            val session = FFmpegKit.execute(cmd)
 
             withContext(Dispatchers.Main) {
                 if (ReturnCode.isSuccess(session.returnCode)) {
@@ -265,7 +271,12 @@ class MainActivity : AppCompatActivity() {
                     } else "0"
 
                     progressBar.progress = 100
-                    tvStatusLog.text = "Selesai! ${outputFiles.size} klip HD+ (~${avgSizeMb} MB/klip) siap dikirim ke WA."
+                    val tip = if (rbAutoBypass.isChecked) {
+                        "Langsung kirim ke Status WA!"
+                    } else {
+                        "Ketuk ikon HD di atas layar WA sebelum kirim!"
+                    }
+                    tvStatusLog.text = "Selesai! ${outputFiles.size} klip (~${avgSizeMb} MB/klip). $tip"
                     btnShareWa.isEnabled = outputFiles.isNotEmpty()
                 } else {
                     tvStatusLog.text = "Gagal memproses video: ${session.failStackTrace}"
