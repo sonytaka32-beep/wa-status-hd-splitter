@@ -114,11 +114,11 @@ class MainActivity : AppCompatActivity() {
 
     private fun calculateOptimalVideoParams(durationSec: Int, interval: Int): Triple<Int, Int, String> {
         val effectiveClipSec = minOf(max(1, durationSec), interval)
-        // Targetkan ~13.2 MB per klip agar lolos limit 15MB WA dengan kepadatan bitrate maksimal
-        val bitrateKbps = ((13.2 * 8192.0) / effectiveClipSec - 128.0).toInt().coerceIn(2200, 6000)
-        // Gunakan 1920p Full HD jika bitrate >= 2600 kbps, atau 1440p jika durasi klip penuh 60 detik
-        val maxSidePx = if (bitrateKbps >= 2600) 1920 else 1440
-        val label = "${maxSidePx}p @ ${String.format("%.2f", bitrateKbps / 1000.0)} Mbps"
+        // Kunci ukuran tiap klip di ~8.3 MB (di bawah ambang batas 10 MB kompresor internal WhatsApp)
+        val bitrateKbps = ((8.3 * 8192.0) / effectiveClipSec - 128.0).toInt().coerceIn(1200, 4500)
+        // Gunakan 1920p Full HD untuk klip <= 35 detik, atau 1440p untuk klip penuh 60 detik
+        val maxSidePx = if (effectiveClipSec <= 35) 1920 else 1440
+        val label = "${maxSidePx}p High-Profile @ ${String.format("%.2f", bitrateKbps / 1000.0)} Mbps (~8.3 MB)"
         return Triple(bitrateKbps, maxSidePx, label)
     }
 
@@ -160,7 +160,7 @@ class MainActivity : AppCompatActivity() {
             timelinePreview.append("• ... s/d Part $totalParts (${videoDurationSec}s)\n")
         }
 
-        tvMediaInfo.text = "MODE: VIDEO HD+ (LOLOS KOMPRESI WA)\n" +
+        tvMediaInfo.text = "MODE: VIDEO HD+ (HIGH-PROFILE ANTI-BLUR)\n" +
                 "Asli: ${savedWidth}x${savedHeight} (${savedOriginalSizeKb} KB) | Durasi: ${videoDurationSec} Detik\n" +
                 "Target HD+: $targetLabel | Total: $totalParts Bagian\n\n" +
                 "Rincian Timeline:\n$timelinePreview"
@@ -203,7 +203,7 @@ class MainActivity : AppCompatActivity() {
         btnProcess.isEnabled = false
         btnShareWa.isEnabled = false
         progressBar.progress = 2
-        tvStatusLog.text = "Menjalankan Hardware GPU Turbo..."
+        tvStatusLog.text = "Merender Video HD+ High Profile..."
 
         scope.launch(Dispatchers.IO) {
             val outDir = prepareOutputDir()
@@ -214,8 +214,8 @@ class MainActivity : AppCompatActivity() {
             val (videoBitrateKbps, maxSidePx, _) = calculateOptimalVideoParams(videoDurationSec, interval)
             val gopFrames = 30 * minOf(videoDurationSec, interval)
 
-            // Kunci sisi terpanjang tepat di 1920px (batas maksimal Full HD WhatsApp) tanpa CPU unsharp agar GPU ngebut
-            val vfFilter = "scale='if(lt(iw,ih),-2,$maxSidePx)':'if(lt(iw,ih),$maxSidePx,-2)':flags=bicubic,format=yuv420p"
+            // Gunakan Lanczos + Unsharp + libx264 High Profile Level 4.1 (sama dengan pipeline Foto HD+ yang terbukti tajam)
+            val vfFilter = "scale='if(lt(iw,ih),-2,$maxSidePx)':'if(lt(iw,ih),$maxSidePx,-2)':flags=lanczos,unsharp=5:5:0.8:3:3:0.0,format=yuv420p"
 
             FFmpegKitConfig.enableStatisticsCallback { stats: Statistics ->
                 val timeSec = (stats.time / 1000.0).toInt()
@@ -226,32 +226,30 @@ class MainActivity : AppCompatActivity() {
                 }
             }
 
-            val hwCmd = "-y -i \"$safeInputPath\" " +
+            val cmd = "-y -i \"$safeInputPath\" " +
                     "-vf \"$vfFilter\" " +
                     "-r 30 -g $gopFrames " +
-                    "-c:v h264_mediacodec -b:v ${videoBitrateKbps}k " +
+                    "-c:v libx264 -preset superfast -profile:v high -level 4.1 -threads 8 " +
+                    "-b:v ${videoBitrateKbps}k -maxrate ${videoBitrateKbps + 250}k -bufsize ${videoBitrateKbps * 2}k " +
                     "-c:a aac -b:a 128k -ac 2 " +
                     "-f segment -segment_time $interval -reset_timestamps 1 " +
+                    "-segment_format_options movflags=+faststart " +
                     "\"$outputPattern\""
 
-            var session = FFmpegKit.execute(hwCmd)
+            var session = FFmpegKit.execute(cmd)
 
+            // Fallback tanpa segment_format_options jika dibutuhkan
             if (!ReturnCode.isSuccess(session.returnCode)) {
-                runOnUiThread {
-                    tvStatusLog.text = "Menjalankan encoder presisi tinggi..."
-                }
                 outDir.listFiles()?.forEach { it.delete() }
-
-                val swCmd = "-y -i \"$safeInputPath\" " +
+                val fallbackCmd = "-y -i \"$safeInputPath\" " +
                         "-vf \"$vfFilter\" " +
                         "-r 30 -g $gopFrames " +
-                        "-c:v libx264 -preset veryfast -profile:v high -level 4.1 -threads 8 " +
-                        "-b:v ${videoBitrateKbps}k -maxrate ${videoBitrateKbps + 300}k -bufsize ${videoBitrateKbps * 2}k " +
+                        "-c:v libx264 -preset superfast -profile:v high -level 4.1 -threads 8 " +
+                        "-b:v ${videoBitrateKbps}k -maxrate ${videoBitrateKbps + 250}k -bufsize ${videoBitrateKbps * 2}k " +
                         "-c:a aac -b:a 128k -ac 2 " +
                         "-f segment -segment_time $interval -reset_timestamps 1 " +
                         "\"$outputPattern\""
-
-                session = FFmpegKit.execute(swCmd)
+                session = FFmpegKit.execute(fallbackCmd)
             }
 
             withContext(Dispatchers.Main) {
@@ -294,7 +292,6 @@ class MainActivity : AppCompatActivity() {
                     BitmapFactory.decodeStream(it, null, decodeOpts)
                 } ?: throw Exception("Foto tidak terbaca")
 
-                // Perbaiki orientasi EXIF
                 val rotationDegrees = contentResolver.openInputStream(uri)?.use { input ->
                     val exif = ExifInterface(input)
                     when (exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)) {
@@ -312,7 +309,6 @@ class MainActivity : AppCompatActivity() {
                     bitmap = rotated
                 }
 
-                // Kunci sisi terpanjang tepat ke 1920px dengan dimensi genap (wajib untuk H.264 Full HD)
                 val maxSide = maxOf(bitmap.width, bitmap.height)
                 val scale = 1920f / maxSide.toFloat()
                 var targetW = (bitmap.width * scale).toInt()
@@ -337,7 +333,6 @@ class MainActivity : AppCompatActivity() {
                     tvStatusLog.text = "Membungkus ke Kontainer Full HD Anti-Kompresi WA..."
                 }
 
-                // Konversi ke MP4 5 detik (6 Mbps, ~3.6 MB) agar WhatsApp tidak menjalankan kompresor foto 150KB
                 val outFile = File(outDir, "StatusHD_Photo.mp4")
                 val cmd = "-y -loop 1 -framerate 30 -i \"${tempPng.absolutePath}\" " +
                         "-t 5 -c:v libx264 -preset veryfast -tune stillimage " +
@@ -411,7 +406,6 @@ class MainActivity : AppCompatActivity() {
             uris.add(uri)
         }
 
-        // Video & Foto HD+ sama-sama dikirim melalui jalur video/mp4 Full HD agar anti-kompresi WA
         val mimeType = "video/mp4"
         val intent = if (uris.size == 1) {
             Intent(Intent.ACTION_SEND).apply {
