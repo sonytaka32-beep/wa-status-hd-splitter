@@ -9,7 +9,9 @@
     <application
         android:allowBackup="true"
         android:extractNativeLibs="true"
-        android:label="Status HD+ Splitter"
+        android:icon="@drawable/ic_gta_sa_logo"
+        android:label="San Andreas HD+"
+        android:roundIcon="@drawable/ic_gta_sa_logo"
         android:supportsRtl="true"
         android:theme="@style/Theme.MaterialComponents.DayNight.NoActionBar">
 
