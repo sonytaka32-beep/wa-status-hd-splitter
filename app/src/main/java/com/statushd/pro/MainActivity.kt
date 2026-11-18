@@ -18,7 +18,6 @@ import java.io.File
 import java.io.FileOutputStream
 import kotlin.math.ceil
 import kotlin.math.max
-import kotlin.math.min
 
 class MainActivity : AppCompatActivity() {
 
@@ -165,7 +164,6 @@ class MainActivity : AppCompatActivity() {
             val interval = getSplitInterval()
             val outputPattern = File(outDir, "StatusHD_Part_%03d.mp4").absolutePath
 
-            // Filter HD+ (Scale 1080p Lanczos + Micro-Sharpening) + Auto-Split presisi di kelipatan 30/60/90/120/150/180/210 dst
             val cmd = "-y -i \"${inputFile.absolutePath}\" " +
                     "-vf \"scale='min(1080,iw)':-2:flags=lanczos,unsharp=3:3:0.6:3:3:0.0,format=yuv420p\" " +
                     "-c:v libx264 -preset veryfast -profile:v high -level 4.1 " +
@@ -176,7 +174,7 @@ class MainActivity : AppCompatActivity() {
                     "\"$outputPattern\""
 
             FFmpegKitConfig.enableStatisticsCallback { stats ->
-                val timeSec = stats.time / 1000
+                val timeSec = (stats.time / 1000.0).toInt()
                 val pct = if (videoDurationSec > 0) ((timeSec * 100) / videoDurationSec).coerceIn(0, 99) else 50
                 runOnUiThread {
                     progressBar.progress = pct
@@ -281,7 +279,6 @@ class MainActivity : AppCompatActivity() {
         try {
             startActivity(intent)
         } catch (e: Exception) {
-            // Fallback ke chooser jika memakai WhatsApp Business atau clone
             intent.setPackage(null)
             startActivity(Intent.createChooser(intent, "Kirim ke Status WhatsApp"))
         }
