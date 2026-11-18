@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="800dp"
+    android:height="600dp"
+    android:viewportWidth="800"
+    android:viewportHeight="600">
+
+    <!-- Latar Belakang Deep Purple / Malam Vice City -->
+    <path android:fillColor="#0F0A1E" android:pathData="M0,0 h800 v600 h-800 z" />
+
+    <!-- Aksen Neon Pink & Cyan Abstrak Ala GTA 6 -->
+    <path android:fillColor="#FF1E82" android:fillAlpha="0.35" android:pathData="M-100,-100 L500,200 L200,700 Z" />
+    <path android:fillColor="#00F0FF" android:fillAlpha="0.25" android:pathData="M300,-50 L900,300 L600,800 Z" />
+    <path android:fillColor="#7E57C2" android:fillAlpha="0.30" android:pathData="M100,100 L700,500 L400,900 Z" />
+
+    <!-- Garis Grid Horizon Retro Arcade -->
+    <path android:strokeColor="#FF1E82" android:strokeWidth="2" android:strokeAlpha="0.4" android:pathData="M0,450 L800,450 M0,500 L800,500 M0,540 L800,540 M0,570 L800,570" />
+    <path android:strokeColor="#00F0FF" android:strokeWidth="1.5" android:strokeAlpha="0.5" android:pathData="M400,350 L0,600 M400,350 L200,600 M400,350 L400,600 M400,350 L600,600 M400,350 L800,600" />
+</vector>

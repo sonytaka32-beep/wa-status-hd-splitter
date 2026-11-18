@@ -3,7 +3,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#050505">
+    android:background="#0B0616">
 
     <ScrollView
         android:layout_width="match_parent"
@@ -15,26 +15,22 @@
             android:layout_height="wrap_content"
             android:orientation="vertical">
 
-            <!-- HEADER BAGIAN ATAS (GAMBAR GTA + JUDUL) -->
+            <!-- HEADER GTA 6 VIBE -->
             <RelativeLayout
                 android:layout_width="match_parent"
                 android:layout_height="280dp">
 
-                <!-- Poster GTA SA -->
                 <ImageView
                     android:layout_width="match_parent"
                     android:layout_height="match_parent"
                     android:scaleType="centerCrop"
-                    android:src="@drawable/gta_sa_poster"
-                    android:alpha="0.85" />
+                    android:src="@drawable/gts6_neon_bg" />
 
-                <!-- Gradien Hitam agar Teks Terbaca -->
                 <View
                     android:layout_width="match_parent"
                     android:layout_height="match_parent"
-                    android:background="@drawable/bg_gradient_bottom" />
+                    android:background="@drawable/bg_gradient_neon" />
 
-                <!-- Teks Judul -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -48,7 +44,7 @@
                         android:fontFamily="sans-serif-medium"
                         android:letterSpacing="0.3"
                         android:text="S O N Y B A E   P R O J E C T"
-                        android:textColor="#E4E4E7"
+                        android:textColor="#00F0FF"
                         android:textSize="10sp"
                         android:textStyle="bold" />
 
@@ -56,65 +52,69 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="2dp"
-                        android:fontFamily="serif"
-                        android:text="San Andreas HD+"
-                        android:textColor="#F59E0B"
+                        android:fontFamily="sans-serif-black"
+                        android:text="STATUS HD+ V6"
+                        android:textColor="#FF1E82"
                         android:textSize="32sp"
                         android:textStyle="bold"
-                        android:shadowColor="#000000"
+                        android:shadowColor="#FF000000"
                         android:shadowDx="4"
                         android:shadowDy="4"
                         android:shadowRadius="3"/>
                 </LinearLayout>
             </RelativeLayout>
 
-            <!-- KONTEN KONTROL PANEL -->
+            <!-- KONTROL PANEL -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
                 android:padding="20dp">
 
-                <!-- Tombol Pilih Media -->
+                <!-- Tombol Media -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginBottom="20dp"
+                    android:layout_marginBottom="16dp"
                     android:orientation="horizontal">
 
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/btnPickVideo"
                         android:layout_width="0dp"
                         android:layout_height="60dp"
-                        android:layout_marginEnd="8dp"
+                        android:layout_marginEnd="6dp"
                         android:layout_weight="1"
-                        android:backgroundTint="#16A34A"
+                        android:backgroundTint="#004D40"
                         android:fontFamily="sans-serif-black"
-                        android:text="PILIH VIDEO"
-                        android:textColor="#FFFFFF"
-                        app:cornerRadius="8dp" />
+                        android:text="ADD VIDEO"
+                        android:textColor="#00F0FF"
+                        app:cornerRadius="12dp"
+                        app:strokeColor="#00F0FF"
+                        app:strokeWidth="1dp"/>
 
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/btnPickPhoto"
                         android:layout_width="0dp"
                         android:layout_height="60dp"
-                        android:layout_marginStart="8dp"
+                        android:layout_marginStart="6dp"
                         android:layout_weight="1"
-                        android:backgroundTint="#2563EB"
+                        android:backgroundTint="#311B92"
                         android:fontFamily="sans-serif-black"
-                        android:text="PILIH FOTO"
-                        android:textColor="#FFFFFF"
-                        app:cornerRadius="8dp" />
+                        android:text="ADD PHOTO"
+                        android:textColor="#FF1E82"
+                        app:cornerRadius="12dp"
+                        app:strokeColor="#FF1E82"
+                        app:strokeWidth="1dp"/>
                 </LinearLayout>
 
-                <!-- Panel Info Media -->
+                <!-- Panel Info -->
                 <com.google.android.material.card.MaterialCardView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginBottom="20dp"
-                    app:cardBackgroundColor="#121212"
-                    app:cardCornerRadius="8dp"
-                    app:strokeColor="#333333"
+                    app:cardBackgroundColor="#130D26"
+                    app:cardCornerRadius="12dp"
+                    app:strokeColor="#2D1A4A"
                     app:strokeWidth="1dp">
 
                     <TextView
@@ -123,19 +123,19 @@
                         android:layout_height="wrap_content"
                         android:fontFamily="sans-serif-condensed"
                         android:padding="16dp"
-                        android:text="[ TERMINAL KOSONG ]\nSilakan pilih media untuk dianalisis."
-                        android:textColor="#38BDF8"
-                        android:textSize="14sp" />
+                        android:text="[ NO MEDIA LOADED ]"
+                        android:textColor="#B39DDB"
+                        android:textSize="13sp" />
                 </com.google.android.material.card.MaterialCardView>
 
-                <!-- Panel Setting -->
+                <!-- Panel Pengaturan -->
                 <com.google.android.material.card.MaterialCardView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginBottom="24dp"
-                    app:cardBackgroundColor="#121212"
-                    app:cardCornerRadius="8dp"
-                    app:strokeColor="#333333"
+                    app:cardBackgroundColor="#130D26"
+                    app:cardCornerRadius="12dp"
+                    app:strokeColor="#2D1A4A"
                     app:strokeWidth="1dp">
 
                     <LinearLayout
@@ -148,9 +148,9 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:fontFamily="sans-serif-black"
-                            android:text="MODE AUTO-ROTATE (UNTUK GAME)"
-                            android:textColor="#F59E0B"
-                            android:textSize="12sp" />
+                            android:text="ROTATION OVERRIDE"
+                            android:textColor="#00F0FF"
+                            android:textSize="11sp" />
 
                         <RadioGroup
                             android:id="@+id/rgRotateMode"
@@ -165,7 +165,7 @@
                                 android:layout_height="wrap_content"
                                 android:checked="true"
                                 android:fontFamily="sans-serif-condensed"
-                                android:text="Auto Vertikal (Khusus Gameplay Horizontal)"
+                                android:text="Auto Portrait (For Landscape Gameplays)"
                                 android:textColor="#E4E4E7" />
 
                             <RadioButton
@@ -173,7 +173,7 @@
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
                                 android:fontFamily="sans-serif-condensed"
-                                android:text="Tanpa Rotasi (Sesuai Aslinya)"
+                                android:text="Keep Original Aspect Ratio"
                                 android:textColor="#E4E4E7" />
                         </RadioGroup>
 
@@ -182,15 +182,15 @@
                             android:layout_height="1dp"
                             android:layout_marginTop="12dp"
                             android:layout_marginBottom="12dp"
-                            android:background="#333333" />
+                            android:background="#2D1A4A" />
 
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:fontFamily="sans-serif-black"
-                            android:text="INTERVAL AUTO-SPLIT"
-                            android:textColor="#F59E0B"
-                            android:textSize="12sp" />
+                            android:text="AUTO-SPLIT DURATION"
+                            android:textColor="#FF1E82"
+                            android:textSize="11sp" />
 
                         <RadioGroup
                             android:id="@+id/rgSplitInterval"
@@ -214,36 +214,36 @@
                                 android:layout_marginStart="24dp"
                                 android:checked="true"
                                 android:fontFamily="sans-serif-condensed"
-                                android:text="30s (Default)"
+                                android:text="30s (Recommended)"
                                 android:textColor="#E4E4E7" />
                         </RadioGroup>
                     </LinearLayout>
                 </com.google.android.material.card.MaterialCardView>
 
-                <!-- Eksekusi -->
+                <!-- Tombol Proses -->
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnProcess"
                     android:layout_width="match_parent"
                     android:layout_height="64dp"
-                    android:backgroundTint="#F59E0B"
+                    android:backgroundTint="#FF1E82"
                     android:enabled="false"
                     android:fontFamily="sans-serif-black"
                     android:letterSpacing="0.05"
-                    android:text="PROSES BYPASS ENGINE"
-                    android:textColor="#050505"
-                    android:textSize="16sp"
-                    app:cornerRadius="8dp" />
+                    android:text="START BYPASS INJECTION"
+                    android:textColor="#FFFFFF"
+                    android:textSize="15sp"
+                    app:cornerRadius="12dp" />
 
                 <ProgressBar
                     android:id="@+id/progressBar"
                     style="?android:attr/progressBarStyleHorizontal"
                     android:layout_width="match_parent"
-                    android:layout_height="12dp"
+                    android:layout_height="8dp"
                     android:layout_marginTop="16dp"
                     android:max="100"
                     android:progress="0"
-                    android:progressTint="#F59E0B"
-                    android:progressBackgroundTint="#333333"/>
+                    android:progressTint="#00F0FF"
+                    android:progressBackgroundTint="#2D1A4A"/>
 
                 <TextView
                     android:id="@+id/tvStatusLog"
@@ -252,24 +252,23 @@
                     android:layout_marginTop="8dp"
                     android:layout_marginBottom="24dp"
                     android:fontFamily="sans-serif-condensed"
-                    android:text="Status: Idle..."
-                    android:textColor="#A1A1AA"
-                    android:textSize="13sp" />
+                    android:text="Terminal Status: Idle..."
+                    android:textColor="#7E57C2"
+                    android:textSize="12sp" />
 
-                <!-- Tombol WA -->
+                <!-- Tombol WhatsApp -->
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnShareWa"
                     android:layout_width="match_parent"
                     android:layout_height="64dp"
-                    android:backgroundTint="#22C55E"
+                    android:backgroundTint="#16A34A"
                     android:enabled="false"
                     android:fontFamily="sans-serif-black"
                     android:letterSpacing="0.05"
-                    android:text="KIRIM KE WHATSAPP"
+                    android:text="SEND TO WHATSAPP"
                     android:textColor="#FFFFFF"
-                    android:textSize="16sp"
-                    app:cornerRadius="8dp" />
-
+                    android:textSize="15sp"
+                    app:cornerRadius="12dp" />
             </LinearLayout>
         </LinearLayout>
     </ScrollView>

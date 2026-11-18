@@ -9,9 +9,9 @@
     <application
         android:allowBackup="true"
         android:extractNativeLibs="true"
-        android:icon="@drawable/ic_gta_sa_logo"
-        android:label="San Andreas HD+"
-        android:roundIcon="@drawable/ic_gta_sa_logo"
+        android:icon="@drawable/gts6_neon_bg"
+        android:label="Status HD+ V6"
+        android:roundIcon="@drawable/gts6_neon_bg"
         android:supportsRtl="true"
         android:theme="@style/Theme.MaterialComponents.DayNight.NoActionBar">
 
