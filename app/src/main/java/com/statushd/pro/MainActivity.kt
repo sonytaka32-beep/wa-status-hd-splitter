@@ -171,16 +171,13 @@ class MainActivity : AppCompatActivity() {
         val maxSide = maxOf(rotatedW, rotatedH)
         val minSide = minOf(rotatedW, rotatedH)
 
-        // Hitung dimensi output tanpa pernah menyusutkan sisi pendek ke 322p
         val scale = if (rbNativeHd.isChecked) {
-            // Pertahankan 1:1 piksel asli jika sudah <= 1080x1920 (misal 720x1612 tetap 720x1612)
             if (maxSide > 1920 || minSide > 1080) {
                 minOf(1920f / maxSide.toFloat(), 1080f / minSide.toFloat())
             } else {
                 1.0f
             }
         } else {
-            // Mode Upscale Full HD 1920p (sisi panjang = 1920, sisi pendek <= 1080)
             minOf(1920f / maxSide.toFloat(), 1080f / minSide.toFloat())
         }
 
@@ -191,8 +188,8 @@ class MainActivity : AppCompatActivity() {
 
         val interval = getSplitInterval()
         val effectiveClipSec = minOf(max(1, videoDurationSec), interval)
-        // Target ukuran aman ~8.8 MB per klip agar bitrate tinggi namun tidak memicu limit 15MB WA
-        val bitrateKbps = ((8.8 * 8192.0) / effectiveClipSec - 128.0).toInt().coerceIn(2200, 5000)
+        // Bitrate tinggi (6 Mbps) untuk True Native HD tanpa kompresi pecah
+        val bitrateKbps = ((9.5 * 8192.0) / effectiveClipSec - 128.0).toInt().coerceIn(3500, 7500)
 
         return VideoPlan(targetW, targetH, transposeFilter, rotateDesc, bitrateKbps)
     }
@@ -222,7 +219,7 @@ class MainActivity : AppCompatActivity() {
             updateVideoSplitPreview()
 
             progressBar.progress = 0
-            tvStatusLog.text = "Status: Video siap! Tekan PROSES HD+ / AUTO SPLIT."
+            tvStatusLog.text = "Status: Video siap! Tekan tombol PROSES."
             btnProcess.isEnabled = true
             btnShareWa.isEnabled = false
         } catch (e: Exception) {
@@ -249,10 +246,10 @@ class MainActivity : AppCompatActivity() {
         val orientAsli = if (origDisplayW > origDisplayH) "Horizontal" else "Vertikal"
         val orientOut = if (plan.outW < plan.outH) "Vertikal Full Layar" else "Horizontal"
 
-        tvMediaInfo.text = "MODE: TRUE NATIVE VIDEO HD+\n" +
-                "Asli: ${origDisplayW}x${origDisplayH} ($orientAsli, ${savedOriginalSizeKb} KB) | Durasi: ${videoDurationSec}s\n" +
+        tvMediaInfo.text = "SAN ANDREAS TRUE NATIVE HD+\n" +
+                "Asli: ${origDisplayW}x${origDisplayH} ($orientAsli, ${savedOriginalSizeKb} KB) | Durasi:${videoDurationSec}s\n" +
                 "Rotasi: ${plan.rotateDesc}\n" +
-                "Output HD+: ${plan.outW}x${plan.outH} ($orientOut) @ ${String.format("%.2f", plan.bitrateKbps / 1000.0)} Mbps\n" +
+                "Output: ${plan.outW}x${plan.outH} ($orientOut) @${String.format("%.2f", plan.bitrateKbps / 1000.0)} Mbps\n" +
                 "Total Potongan: $totalParts Bagian\n\n" +
                 "Rincian Timeline:\n$timelinePreview"
     }
@@ -267,11 +264,11 @@ class MainActivity : AppCompatActivity() {
             val origH = boundsOpts.outHeight
             val origKb = getFileSizeKb(uri)
 
-            tvMediaInfo.text = "MODE: FOTO HD+ ANTI-BLUR (1920p STREAM)\n" +
+            tvMediaInfo.text = "SAN ANDREAS FOTO HD+ (1920p STREAM)\n" +
                     "File Asli: ${origW}x${origH} (${origKb} KB)\n" +
-                    "Bypass Kompresor Foto WA: Render 1920p Full HD (Teks & Detail Utuh)"
+                    "Bypass Kompresor WA: Render Full HD (Teks & Detail Sempurna)"
             progressBar.progress = 0
-            tvStatusLog.text = "Status: Foto siap! Tekan PROSES HD+ / AUTO SPLIT."
+            tvStatusLog.text = "Status: Foto siap! Tekan tombol PROSES."
             btnProcess.isEnabled = true
             btnShareWa.isEnabled = false
         } catch (e: Exception) {
@@ -294,7 +291,7 @@ class MainActivity : AppCompatActivity() {
         btnProcess.isEnabled = false
         btnShareWa.isEnabled = false
         progressBar.progress = 2
-        tvStatusLog.text = "Merender Video True Native HD+..."
+        tvStatusLog.text = "Merender True Native HD+ (Zero Blur)..."
 
         scope.launch(Dispatchers.IO) {
             val outDir = prepareOutputDir()
@@ -305,16 +302,11 @@ class MainActivity : AppCompatActivity() {
             val plan = buildVideoPlan()
             val gopFrames = 30 * minOf(videoDurationSec, interval)
 
-            // Rangkai filter: rotasi (jika aktif) + resolusi presisi tanpa unsharp berlebihan yang memicu halo/blur
             val filters = ArrayList<String>()
             if (plan.transposeFilter != null) {
                 filters.add(plan.transposeFilter)
             }
             filters.add("scale=${plan.outW}:${plan.outH}:flags=lanczos")
-            if (!rbNativeHd.isChecked) {
-                // Micro-contrast sangat halus hanya jika mode Upscale 1920p dipilih
-                filters.add("unsharp=3:3:0.25:3:3:0.0")
-            }
             filters.add("format=yuv420p")
             val vfChain = filters.joinToString(",")
 
@@ -323,18 +315,18 @@ class MainActivity : AppCompatActivity() {
                 val pct = if (videoDurationSec > 0) ((timeSec * 100) / videoDurationSec).coerceIn(2, 99) else 50
                 runOnUiThread {
                     progressBar.progress = pct
-                    tvStatusLog.text = "Memproses HD+ (${plan.outW}x${plan.outH}): $pct% (${timeSec}s / ${videoDurationSec}s)"
+                    tvStatusLog.text = "Merender True Native HD (${plan.outW}x${plan.outH}): $pct% (${timeSec}s / ${videoDurationSec}s)"
                 }
             }
 
-            // Gunakan CRF 19 + deblock -1:-1 agar detail piksel asli tetap tajam alami tanpa artefak over-sharpening
+            // CRF 15 (Visual Lossless) + High Profile Level 4.2 + Bitrate Tinggi (Tanpa unsharp paksa yang memicu blur)
             val cmd = "-y -i \"$safeInputPath\" " +
                     "-vf \"$vfChain\" " +
                     "-r 30 -g $gopFrames " +
-                    "-c:v libx264 -preset fast -profile:v high -level 4.1 -threads 8 " +
-                    "-crf 19 -maxrate ${plan.bitrateKbps}k -bufsize ${plan.bitrateKbps * 2}k " +
-                    "-bf 2 -deblock -1:-1 " +
-                    "-c:a aac -b:a 128k -ar 44100 -ac 2 " +
+                    "-c:v libx264 -preset medium -profile:v high -level 4.2 -threads 8 " +
+                    "-crf 15 -maxrate ${plan.bitrateKbps}k -bufsize ${plan.bitrateKbps * 2}k " +
+                    "-bf 3 -refs 4 -aq-mode 3 " +
+                    "-c:a aac -b:a 192k -ar 48000 -ac 2 " +
                     "-f segment -segment_time $interval -reset_timestamps 1 " +
                     "\"$outputPattern\""
 
@@ -353,7 +345,7 @@ class MainActivity : AppCompatActivity() {
                     } else "0"
 
                     progressBar.progress = 100
-                    tvStatusLog.text = "Selesai! ${outputFiles.size} klip (${plan.outW}x${plan.outH}, ~${avgSizeMb} MB/klip) siap dikirim ke WA!"
+                    tvStatusLog.text = "Selesai! ${outputFiles.size} klip (${plan.outW}x${plan.outH}, ~${avgSizeMb} MB) siap dikirim!"
                     btnShareWa.isEnabled = outputFiles.isNotEmpty()
                 } else {
                     tvStatusLog.text = "Gagal memproses video: ${session.failStackTrace}"
@@ -367,7 +359,7 @@ class MainActivity : AppCompatActivity() {
         btnProcess.isEnabled = false
         btnShareWa.isEnabled = false
         progressBar.progress = 25
-        tvStatusLog.text = "Merender Foto ke Jalur Full HD 1920p Anti-Blur..."
+        tvStatusLog.text = "Merender Foto ke Jalur San Andreas HD..."
 
         scope.launch(Dispatchers.IO) {
             try {
@@ -407,25 +399,22 @@ class MainActivity : AppCompatActivity() {
                 val scaledBitmap = Bitmap.createScaledBitmap(bitmap, targetW, targetH, true)
                 if (scaledBitmap != bitmap) bitmap.recycle()
 
-                val sharpenedBitmap = applyCrispSharpen(scaledBitmap)
-                if (sharpenedBitmap != scaledBitmap) scaledBitmap.recycle()
-
                 val tempPng = File(cacheDir, "hd_frame_source.png")
                 FileOutputStream(tempPng).use { fos ->
-                    sharpenedBitmap.compress(Bitmap.CompressFormat.PNG, 100, fos)
+                    scaledBitmap.compress(Bitmap.CompressFormat.PNG, 100, fos)
                 }
-                sharpenedBitmap.recycle()
+                scaledBitmap.recycle()
 
                 runOnUiThread {
                     progressBar.progress = 60
-                    tvStatusLog.text = "Membungkus ke Kontainer Full HD Anti-Kompresi WA..."
+                    tvStatusLog.text = "Membungkus Foto ke Video Container Anti-Kompresi WA..."
                 }
 
                 val outFile = File(outDir, "StatusHD_Photo.mp4")
                 val cmd = "-y -loop 1 -framerate 30 -i \"${tempPng.absolutePath}\" " +
-                        "-t 5 -c:v libx264 -preset veryfast -tune stillimage " +
-                        "-profile:v high -level 4.1 -pix_fmt yuv420p " +
-                        "-b:v 6000k -maxrate 6500k -bufsize 12000k " +
+                        "-t 5 -c:v libx264 -preset medium -tune stillimage " +
+                        "-profile:v high -level 4.2 -pix_fmt yuv420p " +
+                        "-crf 14 -b:v 8000k -maxrate 10000k -bufsize 20000k " +
                         "\"${outFile.absolutePath}\""
 
                 val session = FFmpegKit.execute(cmd)
@@ -436,7 +425,7 @@ class MainActivity : AppCompatActivity() {
                         outputFiles.add(outFile)
                         progressBar.progress = 100
                         val sizeMb = String.format("%.1f", outFile.length() / (1024.0 * 1024.0))
-                        tvStatusLog.text = "Selesai! Foto HD+ (${targetW}x${targetH}, ${sizeMb} MB) siap dikirim ke WA."
+                        tvStatusLog.text = "Selesai! Foto HD+ (${targetW}x${targetH}, ${sizeMb} MB) siap dikirim."
                         btnShareWa.isEnabled = true
                     } else {
                         tvStatusLog.text = "Gagal merender Foto HD+: ${session.failStackTrace}"
@@ -450,39 +439,6 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
-    }
-
-    private fun applyCrispSharpen(src: Bitmap): Bitmap {
-        val width = src.width
-        val height = src.height
-        val pixels = IntArray(width * height)
-        src.getPixels(pixels, 0, width, 0, 0, width, height)
-        val result = pixels.copyOf()
-
-        for (y in 1 until height - 1) {
-            val rowOffset = y * width
-            for (x in 1 until width - 1) {
-                val idx = rowOffset + x
-                val c = pixels[idx]
-                val top = pixels[idx - width]
-                val bottom = pixels[idx + width]
-                val left = pixels[idx - 1]
-                val right = pixels[idx + 1]
-
-                val r = (((c shr 16) and 0xFF) * 1.6f -
-                        (((top shr 16) and 0xFF) + ((bottom shr 16) and 0xFF) +
-                         ((left shr 16) and 0xFF) + ((right shr 16) and 0xFF)) * 0.15f).toInt().coerceIn(0, 255)
-                val g = (((c shr 8) and 0xFF) * 1.6f -
-                        (((top shr 8) and 0xFF) + ((bottom shr 8) and 0xFF) +
-                         ((left shr 8) and 0xFF) + ((right shr 8) and 0xFF)) * 0.15f).toInt().coerceIn(0, 255)
-                val b = ((c and 0xFF) * 1.6f -
-                        ((top and 0xFF) + (bottom and 0xFF) +
-                         (left and 0xFF) + (right and 0xFF)) * 0.15f).toInt().coerceIn(0, 255)
-
-                result[idx] = (0xFF shl 24) or (r shl 16) or (g shl 8) or b
-            }
-        }
-        return Bitmap.createBitmap(result, width, height, Bitmap.Config.ARGB_8888)
     }
 
     private fun shareToWhatsApp() {
