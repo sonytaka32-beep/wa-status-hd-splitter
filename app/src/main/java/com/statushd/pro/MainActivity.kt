@@ -30,8 +30,15 @@ class MainActivity : AppCompatActivity() {
     private lateinit var progressBar: ProgressBar
     private lateinit var btnProcess: Button
     private lateinit var btnShareWa: Button
+
+    private lateinit var rgRotateMode: RadioGroup
+    private lateinit var rbRotateAuto: RadioButton
+    private lateinit var rbRotateRight: RadioButton
+    private lateinit var rbRotateLeft: RadioButton
+
     private lateinit var rgQualityMode: RadioGroup
-    private lateinit var rbAutoBypass: RadioButton
+    private lateinit var rbNativeHd: RadioButton
+
     private lateinit var rgSplitInterval: RadioGroup
     private lateinit var rb15Sec: RadioButton
     private lateinit var rb30Sec: RadioButton
@@ -39,12 +46,20 @@ class MainActivity : AppCompatActivity() {
     private var selectedUri: Uri? = null
     private var isVideoMode: Boolean = true
     private var videoDurationSec: Int = 0
-    private var savedWidth: String = "?"
-    private var savedHeight: String = "?"
+    private var origDisplayW: Int = 720
+    private var origDisplayH: Int = 1280
     private var savedOriginalSizeKb: Long = 0L
 
     private val outputFiles = ArrayList<File>()
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+
+    data class VideoPlan(
+        val outW: Int,
+        val outH: Int,
+        val transposeFilter: String?,
+        val rotateDesc: String,
+        val bitrateKbps: Int
+    )
 
     private val pickVideoLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         uri?.let {
@@ -71,8 +86,15 @@ class MainActivity : AppCompatActivity() {
         progressBar = findViewById(R.id.progressBar)
         btnProcess = findViewById(R.id.btnProcess)
         btnShareWa = findViewById(R.id.btnShareWa)
+
+        rgRotateMode = findViewById(R.id.rgRotateMode)
+        rbRotateAuto = findViewById(R.id.rbRotateAuto)
+        rbRotateRight = findViewById(R.id.rbRotateRight)
+        rbRotateLeft = findViewById(R.id.rbRotateLeft)
+
         rgQualityMode = findViewById(R.id.rgQualityMode)
-        rbAutoBypass = findViewById(R.id.rbAutoBypass)
+        rbNativeHd = findViewById(R.id.rbNativeHd)
+
         rgSplitInterval = findViewById(R.id.rgSplitInterval)
         rb15Sec = findViewById(R.id.rb15Sec)
         rb30Sec = findViewById(R.id.rb30Sec)
@@ -85,11 +107,15 @@ class MainActivity : AppCompatActivity() {
             pickPhotoLauncher.launch("image/*")
         }
 
-        rgSplitInterval.setOnCheckedChangeListener { _, _ ->
+        rgRotateMode.setOnCheckedChangeListener { _, _ ->
             if (isVideoMode && selectedUri != null) updateVideoSplitPreview()
         }
 
         rgQualityMode.setOnCheckedChangeListener { _, _ ->
+            if (isVideoMode && selectedUri != null) updateVideoSplitPreview()
+        }
+
+        rgSplitInterval.setOnCheckedChangeListener { _, _ ->
             if (isVideoMode && selectedUri != null) updateVideoSplitPreview()
         }
 
@@ -124,31 +150,72 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun calculateOptimalVideoParams(durationSec: Int, interval: Int): Triple<Int, Int, String> {
-        val effectiveClipSec = minOf(max(1, durationSec), interval)
-        return if (rbAutoBypass.isChecked) {
-            // 720p HD dengan Bitrate Tinggi (Fokus Ketajaman Maksimal tanpa kompresi server WA)
-            val targetSizeMb = 8.5
-            val bitrateKbps = ((targetSizeMb * 8192.0) / effectiveClipSec - 96.0).toInt().coerceIn(2500, 4800)
-            val label = "720p HD Sharp @ ${String.format("%.2f", bitrateKbps / 1000.0)} Mbps (~8.5 MB)"
-            Triple(bitrateKbps, 720, label)
-        } else {
-            // Mode 864p High-Density (Keseimbangan Resolusi dan Bitrate Tinggi)
-            val targetSizeMb = 9.2
-            val bitrateKbps = ((targetSizeMb * 8192.0) / effectiveClipSec - 96.0).toInt().coerceIn(2800, 5200)
-            val label = "864p Ultra HD @ ${String.format("%.2f", bitrateKbps / 1000.0)} Mbps (~9.2 MB)"
-            Triple(bitrateKbps, 864, label)
+    private fun buildVideoPlan(): VideoPlan {
+        val isHorizontal = origDisplayW > origDisplayH
+
+        val (transposeFilter, rotateDesc, rotatedW, rotatedH) = when {
+            rbRotateRight.isChecked -> {
+                Quadruple("transpose=1", "Putar 90° Kanan (Vertikal)", origDisplayH, origDisplayW)
+            }
+            rbRotateLeft.isChecked -> {
+                Quadruple("transpose=2", "Putar 90° Kiri (Vertikal)", origDisplayH, origDisplayW)
+            }
+            rbRotateAuto.isChecked && isHorizontal -> {
+                Quadruple("transpose=1", "Auto-Rotate 90° (Horizontal -> Vertikal Full Layar)", origDisplayH, origDisplayW)
+            }
+            else -> {
+                Quadruple(null, "Orientasi Asli (Tanpa Rotasi)", origDisplayW, origDisplayH)
+            }
         }
+
+        val maxSide = maxOf(rotatedW, rotatedH)
+        val minSide = minOf(rotatedW, rotatedH)
+
+        // Hitung dimensi output tanpa pernah menyusutkan sisi pendek ke 322p
+        val scale = if (rbNativeHd.isChecked) {
+            // Pertahankan 1:1 piksel asli jika sudah <= 1080x1920 (misal 720x1612 tetap 720x1612)
+            if (maxSide > 1920 || minSide > 1080) {
+                minOf(1920f / maxSide.toFloat(), 1080f / minSide.toFloat())
+            } else {
+                1.0f
+            }
+        } else {
+            // Mode Upscale Full HD 1920p (sisi panjang = 1920, sisi pendek <= 1080)
+            minOf(1920f / maxSide.toFloat(), 1080f / minSide.toFloat())
+        }
+
+        var targetW = ((rotatedW * scale).toInt() / 2) * 2
+        var targetH = ((rotatedH * scale).toInt() / 2) * 2
+        if (targetW < 2) targetW = 720
+        if (targetH < 2) targetH = 1280
+
+        val interval = getSplitInterval()
+        val effectiveClipSec = minOf(max(1, videoDurationSec), interval)
+        // Target ukuran aman ~8.8 MB per klip agar bitrate tinggi namun tidak memicu limit 15MB WA
+        val bitrateKbps = ((8.8 * 8192.0) / effectiveClipSec - 128.0).toInt().coerceIn(2200, 5000)
+
+        return VideoPlan(targetW, targetH, transposeFilter, rotateDesc, bitrateKbps)
     }
+
+    private data class Quadruple<A, B, C, D>(val first: A, val second: B, val third: C, val fourth: D)
 
     private fun analyzeVideo(uri: Uri) {
         try {
             val retriever = MediaMetadataRetriever()
             retriever.setDataSource(this, uri)
             val durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
-            savedWidth = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH) ?: "?"
-            savedHeight = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT) ?: "?"
+            val rawW = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull() ?: 720
+            val rawH = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull() ?: 1280
+            val metaRot = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toIntOrNull() ?: 0
             retriever.release()
+
+            if (metaRot == 90 || metaRot == 270) {
+                origDisplayW = rawH
+                origDisplayH = rawW
+            } else {
+                origDisplayW = rawW
+                origDisplayH = rawH
+            }
 
             savedOriginalSizeKb = getFileSizeKb(uri)
             videoDurationSec = max(1, (durationMs / 1000).toInt())
@@ -166,7 +233,7 @@ class MainActivity : AppCompatActivity() {
     private fun updateVideoSplitPreview() {
         val interval = getSplitInterval()
         val totalParts = ceil(videoDurationSec.toDouble() / interval.toDouble()).toInt()
-        val (_, _, targetLabel) = calculateOptimalVideoParams(videoDurationSec, interval)
+        val plan = buildVideoPlan()
         val timelinePreview = StringBuilder()
 
         val maxPreview = minOf(totalParts, 8)
@@ -179,9 +246,14 @@ class MainActivity : AppCompatActivity() {
             timelinePreview.append("• ... s/d Part $totalParts (${videoDurationSec}s)\n")
         }
 
-        tvMediaInfo.text = "MODE: VIDEO SHARP HD+ (ANTI-BLUR)\n" +
-                "Asli: ${savedWidth}x${savedHeight} (${savedOriginalSizeKb} KB) | Durasi: ${videoDurationSec} Detik\n" +
-                "Target: $targetLabel | Total: $totalParts Bagian\n\n" +
+        val orientAsli = if (origDisplayW > origDisplayH) "Horizontal" else "Vertikal"
+        val orientOut = if (plan.outW < plan.outH) "Vertikal Full Layar" else "Horizontal"
+
+        tvMediaInfo.text = "MODE: TRUE NATIVE VIDEO HD+\n" +
+                "Asli: ${origDisplayW}x${origDisplayH} ($orientAsli, ${savedOriginalSizeKb} KB) | Durasi: ${videoDurationSec}s\n" +
+                "Rotasi: ${plan.rotateDesc}\n" +
+                "Output HD+: ${plan.outW}x${plan.outH} ($orientOut) @ ${String.format("%.2f", plan.bitrateKbps / 1000.0)} Mbps\n" +
+                "Total Potongan: $totalParts Bagian\n\n" +
                 "Rincian Timeline:\n$timelinePreview"
     }
 
@@ -222,7 +294,7 @@ class MainActivity : AppCompatActivity() {
         btnProcess.isEnabled = false
         btnShareWa.isEnabled = false
         progressBar.progress = 2
-        tvStatusLog.text = "Merender Video Sharp HD+..."
+        tvStatusLog.text = "Merender Video True Native HD+..."
 
         scope.launch(Dispatchers.IO) {
             val outDir = prepareOutputDir()
@@ -230,29 +302,39 @@ class MainActivity : AppCompatActivity() {
             val interval = getSplitInterval()
             val outputPattern = File(outDir, "StatusHD_Part_%03d.mp4").absolutePath
 
-            val (videoBitrateKbps, maxSidePx, _) = calculateOptimalVideoParams(videoDurationSec, interval)
+            val plan = buildVideoPlan()
             val gopFrames = 30 * minOf(videoDurationSec, interval)
 
-            // Filter Lanczos + Unsharp Agresif untuk menjaga ketajaman teks/garis di video game & lirik
-            val vfFilter = "scale='if(lt(iw,ih),-2,$maxSidePx)':'if(lt(iw,ih),$maxSidePx,-2)':flags=lanczos,unsharp=5:5:1.0:3:3:0.5,format=yuv420p"
+            // Rangkai filter: rotasi (jika aktif) + resolusi presisi tanpa unsharp berlebihan yang memicu halo/blur
+            val filters = ArrayList<String>()
+            if (plan.transposeFilter != null) {
+                filters.add(plan.transposeFilter)
+            }
+            filters.add("scale=${plan.outW}:${plan.outH}:flags=lanczos")
+            if (!rbNativeHd.isChecked) {
+                // Micro-contrast sangat halus hanya jika mode Upscale 1920p dipilih
+                filters.add("unsharp=3:3:0.25:3:3:0.0")
+            }
+            filters.add("format=yuv420p")
+            val vfChain = filters.joinToString(",")
 
             FFmpegKitConfig.enableStatisticsCallback { stats: Statistics ->
                 val timeSec = (stats.time / 1000.0).toInt()
                 val pct = if (videoDurationSec > 0) ((timeSec * 100) / videoDurationSec).coerceIn(2, 99) else 50
                 runOnUiThread {
                     progressBar.progress = pct
-                    tvStatusLog.text = "Memproses Video Sharp HD+ (${maxSidePx}p): $pct% (${timeSec}s / ${videoDurationSec}s)"
+                    tvStatusLog.text = "Memproses HD+ (${plan.outW}x${plan.outH}): $pct% (${timeSec}s / ${videoDurationSec}s)"
                 }
             }
 
-            // Encoder High Profile dengan CRF/Bitrate tinggi + aq-mode 3 untuk detail maksimal
+            // Gunakan CRF 19 + deblock -1:-1 agar detail piksel asli tetap tajam alami tanpa artefak over-sharpening
             val cmd = "-y -i \"$safeInputPath\" " +
-                    "-vf \"$vfFilter\" " +
+                    "-vf \"$vfChain\" " +
                     "-r 30 -g $gopFrames " +
-                    "-c:v libx264 -preset medium -profile:v high -level 4.1 -threads 8 " +
-                    "-bf 2 -aq-mode 3 " +
-                    "-b:v ${videoBitrateKbps}k -maxrate ${videoBitrateKbps + 400}k -bufsize ${videoBitrateKbps * 2}k " +
-                    "-c:a aac -b:a 128k -ac 2 " +
+                    "-c:v libx264 -preset fast -profile:v high -level 4.1 -threads 8 " +
+                    "-crf 19 -maxrate ${plan.bitrateKbps}k -bufsize ${plan.bitrateKbps * 2}k " +
+                    "-bf 2 -deblock -1:-1 " +
+                    "-c:a aac -b:a 128k -ar 44100 -ac 2 " +
                     "-f segment -segment_time $interval -reset_timestamps 1 " +
                     "\"$outputPattern\""
 
@@ -271,7 +353,7 @@ class MainActivity : AppCompatActivity() {
                     } else "0"
 
                     progressBar.progress = 100
-                    tvStatusLog.text = "Selesai! ${outputFiles.size} klip (~${avgSizeMb} MB/klip) sangat jernih. Kirim ke Status WA!"
+                    tvStatusLog.text = "Selesai! ${outputFiles.size} klip (${plan.outW}x${plan.outH}, ~${avgSizeMb} MB/klip) siap dikirim ke WA!"
                     btnShareWa.isEnabled = outputFiles.isNotEmpty()
                 } else {
                     tvStatusLog.text = "Gagal memproses video: ${session.failStackTrace}"

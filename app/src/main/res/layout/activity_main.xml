@@ -22,14 +22,14 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
-            android:text="Anti-Blur Video + Foto + Auto-Split Tanpa Batas Durasi"
+            android:text="True Native HD + Auto Rotate Vertikal + Auto-Split"
             android:textColor="#94A3B8"
             android:textSize="13sp" />
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="18dp"
+            android:layout_marginTop="16dp"
             android:orientation="horizontal">
 
             <Button
@@ -57,7 +57,52 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
-            android:text="Mode Jalur Upload WhatsApp:"
+            android:text="Rotasi Video (Agar Full Layar Vertikal di Status WA):"
+            android:textColor="#E2E8F0"
+            android:textStyle="bold" />
+
+        <RadioGroup
+            android:id="@+id/rgRotateMode"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:orientation="vertical">
+
+            <RadioButton
+                android:id="@+id/rbRotateAuto"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:checked="true"
+                android:text="Otomatis Vertikal (Putar 90° jika Video Horizontal)"
+                android:textColor="#F8FAFC" />
+
+            <RadioButton
+                android:id="@+id/rbRotateRight"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Putar 90° Kanan (Searah Jarum Jam)"
+                android:textColor="#F8FAFC" />
+
+            <RadioButton
+                android:id="@+id/rbRotateLeft"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Putar 90° Kiri (Berlawanan Jarum Jam)"
+                android:textColor="#F8FAFC" />
+
+            <RadioButton
+                android:id="@+id/rbRotateNone"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Tanpa Rotasi (Biarkan Orientasi Asli)"
+                android:textColor="#F8FAFC" />
+        </RadioGroup>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:text="Mode Ketajaman Video:"
             android:textColor="#E2E8F0"
             android:textStyle="bold" />
 
@@ -69,18 +114,18 @@
             android:orientation="vertical">
 
             <RadioButton
-                android:id="@+id/rbAutoBypass"
+                android:id="@+id/rbNativeHd"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:checked="true"
-                android:text="Auto-Lolos WA (720p ~5MB - Jernih Otomatis)"
+                android:text="Native 1:1 Natural HD (Jernih Alami Tanpa Efek Paksa)"
                 android:textColor="#F8FAFC" />
 
             <RadioButton
-                android:id="@+id/rbForce1080p"
+                android:id="@+id/rbUpscale1080p"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Full HD 1080p (Wajib Ketuk Ikon HD di Atas WA)"
+                android:text="Upscale Full HD 1920p (Halus + Micro-Contrast)"
                 android:textColor="#F8FAFC" />
         </RadioGroup>
 
