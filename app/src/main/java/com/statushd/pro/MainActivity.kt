@@ -112,6 +112,16 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun calculateOptimalVideoParams(durationSec: Int, interval: Int): Triple<Int, Int, String> {
+        val effectiveClipSec = minOf(max(1, durationSec), interval)
+        // Targetkan ~13.2 MB per klip agar lolos limit 15MB WA dengan kepadatan bitrate maksimal
+        val bitrateKbps = ((13.2 * 8192.0) / effectiveClipSec - 128.0).toInt().coerceIn(2200, 6000)
+        // Gunakan 1920p Full HD jika bitrate >= 2600 kbps, atau 1440p jika durasi klip penuh 60 detik
+        val maxSidePx = if (bitrateKbps >= 2600) 1920 else 1440
+        val label = "${maxSidePx}p @ ${String.format("%.2f", bitrateKbps / 1000.0)} Mbps"
+        return Triple(bitrateKbps, maxSidePx, label)
+    }
+
     private fun analyzeVideo(uri: Uri) {
         try {
             val retriever = MediaMetadataRetriever()
@@ -137,7 +147,7 @@ class MainActivity : AppCompatActivity() {
     private fun updateVideoSplitPreview() {
         val interval = getSplitInterval()
         val totalParts = ceil(videoDurationSec.toDouble() / interval.toDouble()).toInt()
-        val targetBitrate = if (interval == 30) "3.4 Mbps (Ultra Jernih)" else "1.85 Mbps (Anti-Limit 15MB)"
+        val (_, _, targetLabel) = calculateOptimalVideoParams(videoDurationSec, interval)
         val timelinePreview = StringBuilder()
 
         val maxPreview = minOf(totalParts, 8)
@@ -150,9 +160,9 @@ class MainActivity : AppCompatActivity() {
             timelinePreview.append("• ... s/d Part $totalParts (${videoDurationSec}s)\n")
         }
 
-        tvMediaInfo.text = "MODE: VIDEO HD+ 1080p & AUTO-SPLIT\n" +
+        tvMediaInfo.text = "MODE: VIDEO HD+ (LOLOS KOMPRESI WA)\n" +
                 "Asli: ${savedWidth}x${savedHeight} (${savedOriginalSizeKb} KB) | Durasi: ${videoDurationSec} Detik\n" +
-                "Target HD+: 1080p @ $targetBitrate | Total: $totalParts Bagian\n\n" +
+                "Target HD+: $targetLabel | Total: $totalParts Bagian\n\n" +
                 "Rincian Timeline:\n$timelinePreview"
     }
 
@@ -166,9 +176,9 @@ class MainActivity : AppCompatActivity() {
             val origH = boundsOpts.outHeight
             val origKb = getFileSizeKb(uri)
 
-            tvMediaInfo.text = "MODE: FOTO HD+ 2K ANTI-BLUR\n" +
+            tvMediaInfo.text = "MODE: FOTO HD+ ANTI-BLUR (1920p STREAM)\n" +
                     "File Asli: ${origW}x${origH} (${origKb} KB)\n" +
-                    "Target Optimasi: Upscale 2K HD + Penajaman Teks (HQ 98%)"
+                    "Bypass Kompresor Foto WA: Render 1920p Full HD (Teks & Detail Utuh)"
             progressBar.progress = 0
             tvStatusLog.text = "Status: Foto siap! Tekan PROSES HD+ / AUTO SPLIT."
             btnProcess.isEnabled = true
@@ -193,7 +203,7 @@ class MainActivity : AppCompatActivity() {
         btnProcess.isEnabled = false
         btnShareWa.isEnabled = false
         progressBar.progress = 2
-        tvStatusLog.text = "Menjalankan GPU Hardware Encoder..."
+        tvStatusLog.text = "Menjalankan Hardware GPU Turbo..."
 
         scope.launch(Dispatchers.IO) {
             val outDir = prepareOutputDir()
@@ -201,23 +211,21 @@ class MainActivity : AppCompatActivity() {
             val interval = getSplitInterval()
             val outputPattern = File(outDir, "StatusHD_Part_%03d.mp4").absolutePath
 
-            // Kunci ukuran tiap klip di bawah 14.5 MB agar lolos dari kompresi paksa WhatsApp
-            val videoBitrateKbps = if (interval == 30) 3400 else 1850
-            val gopFrames = 30 * interval
+            val (videoBitrateKbps, maxSidePx, _) = calculateOptimalVideoParams(videoDurationSec, interval)
+            val gopFrames = 30 * minOf(videoDurationSec, interval)
 
-            // Upscale 720p ke 1080p (sisi terpendek = 1080) + micro-sharpening halus agar teks/wajah tetap tajam
-            val vfFilter = "scale='if(lt(iw,ih),1080,-2)':'if(lt(iw,ih),-2,1080)':flags=bicubic,unsharp=3:3:0.5:3:3:0.0,format=yuv420p"
+            // Kunci sisi terpanjang tepat di 1920px (batas maksimal Full HD WhatsApp) tanpa CPU unsharp agar GPU ngebut
+            val vfFilter = "scale='if(lt(iw,ih),-2,$maxSidePx)':'if(lt(iw,ih),$maxSidePx,-2)':flags=bicubic,format=yuv420p"
 
             FFmpegKitConfig.enableStatisticsCallback { stats: Statistics ->
                 val timeSec = (stats.time / 1000.0).toInt()
                 val pct = if (videoDurationSec > 0) ((timeSec * 100) / videoDurationSec).coerceIn(2, 99) else 50
                 runOnUiThread {
                     progressBar.progress = pct
-                    tvStatusLog.text = "Memproses Video HD+ 1080p: $pct% (${timeSec}s / ${videoDurationSec}s)"
+                    tvStatusLog.text = "Memproses Video HD+ (${maxSidePx}p): $pct% (${timeSec}s / ${videoDurationSec}s)"
                 }
             }
 
-            // 1. Hardware MediaCodec tanpa flag yang ditolak driver GPU Android
             val hwCmd = "-y -i \"$safeInputPath\" " +
                     "-vf \"$vfFilter\" " +
                     "-r 30 -g $gopFrames " +
@@ -228,17 +236,16 @@ class MainActivity : AppCompatActivity() {
 
             var session = FFmpegKit.execute(hwCmd)
 
-            // 2. Fallback superfast (bukan ultrafast agar detail tidak pecah)
             if (!ReturnCode.isSuccess(session.returnCode)) {
                 runOnUiThread {
-                    tvStatusLog.text = "Mengoptimasi dengan mode kompatibilitas HD+..."
+                    tvStatusLog.text = "Menjalankan encoder presisi tinggi..."
                 }
                 outDir.listFiles()?.forEach { it.delete() }
 
                 val swCmd = "-y -i \"$safeInputPath\" " +
                         "-vf \"$vfFilter\" " +
                         "-r 30 -g $gopFrames " +
-                        "-c:v libx264 -preset superfast -threads 8 " +
+                        "-c:v libx264 -preset veryfast -profile:v high -level 4.1 -threads 8 " +
                         "-b:v ${videoBitrateKbps}k -maxrate ${videoBitrateKbps + 300}k -bufsize ${videoBitrateKbps * 2}k " +
                         "-c:a aac -b:a 128k -ac 2 " +
                         "-f segment -segment_time $interval -reset_timestamps 1 " +
@@ -273,8 +280,8 @@ class MainActivity : AppCompatActivity() {
     private fun processPhotoHd(uri: Uri) {
         btnProcess.isEnabled = false
         btnShareWa.isEnabled = false
-        progressBar.progress = 30
-        tvStatusLog.text = "Meningkatkan Foto ke 2K HD+ & Menajamkan Detail..."
+        progressBar.progress = 25
+        tvStatusLog.text = "Merender Foto ke Jalur Full HD 1920p Anti-Blur..."
 
         scope.launch(Dispatchers.IO) {
             try {
@@ -305,45 +312,52 @@ class MainActivity : AppCompatActivity() {
                     bitmap = rotated
                 }
 
-                // Upscale gambar kecil/720p ke minimal 1152px sisi pendek (maks 2560px sisi panjang)
-                // agar WhatsApp masuk ke mode HD dan tidak mengaburkan teks
-                val minSide = minOf(bitmap.width, bitmap.height)
+                // Kunci sisi terpanjang tepat ke 1920px dengan dimensi genap (wajib untuk H.264 Full HD)
                 val maxSide = maxOf(bitmap.width, bitmap.height)
-                val targetScale = when {
-                    minSide < 1152 -> minOf(1152f / minSide, 2560f / maxSide)
-                    maxSide > 2560 -> 2560f / maxSide
-                    else -> 1.0f
-                }
+                val scale = 1920f / maxSide.toFloat()
+                var targetW = (bitmap.width * scale).toInt()
+                var targetH = (bitmap.height * scale).toInt()
+                if (targetW % 2 != 0) targetW += 1
+                if (targetH % 2 != 0) targetH += 1
 
-                val targetW = (bitmap.width * targetScale).toInt()
-                val targetH = (bitmap.height * targetScale).toInt()
+                val scaledBitmap = Bitmap.createScaledBitmap(bitmap, targetW, targetH, true)
+                if (scaledBitmap != bitmap) bitmap.recycle()
 
-                val resizedBitmap = if (targetScale != 1.0f) {
-                    val scaled = Bitmap.createScaledBitmap(bitmap, targetW, targetH, true)
-                    if (scaled != bitmap) bitmap.recycle()
-                    scaled
-                } else {
-                    bitmap
-                }
+                val sharpenedBitmap = applyCrispSharpen(scaledBitmap)
+                if (sharpenedBitmap != scaledBitmap) scaledBitmap.recycle()
 
-                // Terapkan Crisp Edge Sharpening agar huruf & garis tetap tajam
-                val sharpenedBitmap = applyCrispSharpen(resizedBitmap)
-                if (sharpenedBitmap != resizedBitmap) resizedBitmap.recycle()
-
-                val outFile = File(outDir, "StatusHD_Photo.jpg")
-                FileOutputStream(outFile).use { fos ->
-                    // Kualitas 98 menjaga ukuran file & detail tetap tinggi dibanding file asli
-                    sharpenedBitmap.compress(Bitmap.CompressFormat.JPEG, 98, fos)
+                val tempPng = File(cacheDir, "hd_frame_source.png")
+                FileOutputStream(tempPng).use { fos ->
+                    sharpenedBitmap.compress(Bitmap.CompressFormat.PNG, 100, fos)
                 }
                 sharpenedBitmap.recycle()
 
-                outputFiles.add(outFile)
+                runOnUiThread {
+                    progressBar.progress = 60
+                    tvStatusLog.text = "Membungkus ke Kontainer Full HD Anti-Kompresi WA..."
+                }
+
+                // Konversi ke MP4 5 detik (6 Mbps, ~3.6 MB) agar WhatsApp tidak menjalankan kompresor foto 150KB
+                val outFile = File(outDir, "StatusHD_Photo.mp4")
+                val cmd = "-y -loop 1 -framerate 30 -i \"${tempPng.absolutePath}\" " +
+                        "-t 5 -c:v libx264 -preset veryfast -tune stillimage " +
+                        "-profile:v high -level 4.1 -pix_fmt yuv420p " +
+                        "-b:v 6000k -maxrate 6500k -bufsize 12000k " +
+                        "\"${outFile.absolutePath}\""
+
+                val session = FFmpegKit.execute(cmd)
+                tempPng.delete()
 
                 withContext(Dispatchers.Main) {
-                    progressBar.progress = 100
-                    val sizeKb = outFile.length() / 1024
-                    tvStatusLog.text = "Selesai! Foto HD+ (${targetW}x${targetH}, ${sizeKb} KB) siap dikirim ke WA."
-                    btnShareWa.isEnabled = true
+                    if (ReturnCode.isSuccess(session.returnCode) && outFile.exists() && outFile.length() > 0) {
+                        outputFiles.add(outFile)
+                        progressBar.progress = 100
+                        val sizeMb = String.format("%.1f", outFile.length() / (1024.0 * 1024.0))
+                        tvStatusLog.text = "Selesai! Foto HD+ (${targetW}x${targetH}, ${sizeMb} MB) siap dikirim ke WA."
+                        btnShareWa.isEnabled = true
+                    } else {
+                        tvStatusLog.text = "Gagal merender Foto HD+: ${session.failStackTrace}"
+                    }
                     btnProcess.isEnabled = true
                 }
             } catch (e: Exception) {
@@ -397,7 +411,8 @@ class MainActivity : AppCompatActivity() {
             uris.add(uri)
         }
 
-        val mimeType = if (isVideoMode) "video/mp4" else "image/jpeg"
+        // Video & Foto HD+ sama-sama dikirim melalui jalur video/mp4 Full HD agar anti-kompresi WA
+        val mimeType = "video/mp4"
         val intent = if (uris.size == 1) {
             Intent(Intent.ACTION_SEND).apply {
                 type = mimeType
