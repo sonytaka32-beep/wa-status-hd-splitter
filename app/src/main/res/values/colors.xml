@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="sa_background">#10130E</color>
+    <color name="sa_surface">#20251A</color>
+    <color name="sa_military">#46552B</color>
+    <color name="sa_olive">#697747</color>
+    <color name="sa_sunset">#C45B32</color>
+    <color name="sa_gold">#D5A64A</color>
+    <color name="sa_cream">#F2E8CF</color>
+    <color name="sa_muted">#A8A58F</color>
+    <color name="sa_shadow">#080A07</color>
+</resources>

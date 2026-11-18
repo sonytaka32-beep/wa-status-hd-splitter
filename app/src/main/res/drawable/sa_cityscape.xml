@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="800dp"
+    android:height="400dp"
+    android:viewportWidth="800"
+    android:viewportHeight="400">
+
+    <!-- Sunset sky -->
+    <path
+        android:fillColor="#D77B48"
+        android:pathData="M0,0 H800 V400 H0 Z"/>
+
+    <!-- Horizon glow -->
+    <path
+        android:fillColor="#EAA15C"
+        android:pathData="M0,210 H800 V330 H0 Z"/>
+
+    <!-- Distant city -->
+    <path
+        android:fillColor="#795044"
+        android:pathData="M0,220 H55 V160 H90 V210 H125 V130 H165 V220 H205 V175 H245 V220 H290 V145 H330 V220 H370 V185 H410 V220 H450 V130 H485 V220 H530 V170 H570 V220 H610 V150 H650 V220 H690 V180 H730 V220 H800 V400 H0 Z"/>
+
+    <!-- Foreground buildings -->
+    <path
+        android:fillColor="#25251B"
+        android:pathData="M0,280 H75 V210 H125 V280 H170 V240 H220 V280 H270 V190 H320 V280 H360 V230 H410 V280 H460 V205 H510 V280 H550 V245 H610 V280 H650 V215 H710 V280 H800 V400 H0 Z"/>
+
+    <!-- Road -->
+    <path
+        android:fillColor="#10130D"
+        android:pathData="M0,330 H800 V400 H0 Z"/>
+
+    <!-- Road markings -->
+    <path
+        android:fillColor="#D5A64A"
+        android:pathData="M100,355 H220 V359 H100 Z M300,355 H420 V359 H300 Z M500,355 H620 V359 H500 Z"/>
+
+    <!-- Palm tree left -->
+    <path
+        android:fillColor="#17180F"
+        android:pathData="M90,320 Q115,220 125,120 Q135,220 105,320 Z"/>
+
+    <path
+        android:fillColor="#17180F"
+        android:pathData="M125,125 Q70,65 20,95 Q75,95 125,125
+        M125,125 Q100,45 125,20 Q135,80 125,125
+        M125,125 Q160,45 210,65 Q160,95 125,125
+        M125,125 Q200,100 220,145 Q165,130 125,125
+        M125,125 Q65,120 35,165 Q85,150 125,125"/>
+
+    <!-- Palm tree right -->
+    <path
+        android:fillColor="#17180F"
+        android:pathData="M680,320 Q660,220 670,120 Q680,220 700,320 Z"/>
+
+    <path
+        android:fillColor="#17180F"
+        android:pathData="M670,125 Q615,65 570,90 Q620,95 670,125
+        M670,125 Q645,45 670,20 Q680,80 670,125
+        M670,125 Q710,45 760,65 Q710,95 670,125
+        M670,125 Q740,100 775,145 Q720,130 670,125
+        M670,125 Q610,120 580,165 Q630,150 670,125"/>
+
+</vector>
