@@ -8,6 +8,7 @@ import android.media.ExifInterface
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Bundle
+import android.provider.OpenableColumns
 import android.widget.*
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -35,6 +36,10 @@ class MainActivity : AppCompatActivity() {
     private var selectedUri: Uri? = null
     private var isVideoMode: Boolean = true
     private var videoDurationSec: Int = 0
+    private var savedWidth: String = "?"
+    private var savedHeight: String = "?"
+    private var savedOriginalSizeKb: Long = 0L
+
     private val outputFiles = ArrayList<File>()
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
@@ -94,19 +99,34 @@ class MainActivity : AppCompatActivity() {
         return if (rb30Sec.isChecked) 30 else 60
     }
 
+    private fun getFileSizeKb(uri: Uri): Long {
+        return try {
+            contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                val sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE)
+                if (cursor.moveToFirst() && sizeIndex != -1) {
+                    cursor.getLong(sizeIndex) / 1024L
+                } else 0L
+            } ?: 0L
+        } catch (e: Exception) {
+            0L
+        }
+    }
+
     private fun analyzeVideo(uri: Uri) {
         try {
             val retriever = MediaMetadataRetriever()
             retriever.setDataSource(this, uri)
             val durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
-            val width = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH) ?: "?"
-            val height = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT) ?: "?"
+            savedWidth = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH) ?: "?"
+            savedHeight = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT) ?: "?"
             retriever.release()
 
+            savedOriginalSizeKb = getFileSizeKb(uri)
             videoDurationSec = max(1, (durationMs / 1000).toInt())
-            updateVideoSplitPreview(width, height)
+            updateVideoSplitPreview()
+
             progressBar.progress = 0
-            tvStatusLog.text = "Status: Video siap! Tekan tombol PROSES HD+ / AUTO SPLIT."
+            tvStatusLog.text = "Status: Video siap! Tekan PROSES HD+ / AUTO SPLIT."
             btnProcess.isEnabled = true
             btnShareWa.isEnabled = false
         } catch (e: Exception) {
@@ -114,9 +134,10 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun updateVideoSplitPreview(width: String = "Auto", height: String = "Auto") {
+    private fun updateVideoSplitPreview() {
         val interval = getSplitInterval()
         val totalParts = ceil(videoDurationSec.toDouble() / interval.toDouble()).toInt()
+        val targetBitrate = if (interval == 30) "3.4 Mbps (Ultra Jernih)" else "1.85 Mbps (Anti-Limit 15MB)"
         val timelinePreview = StringBuilder()
 
         val maxPreview = minOf(totalParts, 8)
@@ -129,19 +150,32 @@ class MainActivity : AppCompatActivity() {
             timelinePreview.append("• ... s/d Part $totalParts (${videoDurationSec}s)\n")
         }
 
-        tvMediaInfo.text = "MODE: VIDEO HD+ & AUTO-SPLIT (GPU TURBO)\n" +
-                "Resolusi Asli: ${width}x${height} | Total Durasi: ${videoDurationSec} Detik\n" +
-                "Otomatis dibagi menjadi: $totalParts Bagian (@${interval} dtk)\n\n" +
+        tvMediaInfo.text = "MODE: VIDEO HD+ 1080p & AUTO-SPLIT\n" +
+                "Asli: ${savedWidth}x${savedHeight} (${savedOriginalSizeKb} KB) | Durasi: ${videoDurationSec} Detik\n" +
+                "Target HD+: 1080p @ $targetBitrate | Total: $totalParts Bagian\n\n" +
                 "Rincian Timeline:\n$timelinePreview"
     }
 
     private fun analyzePhoto(uri: Uri) {
-        tvMediaInfo.text = "MODE: FOTO HD+ (Anti-Blur 2048px Sweet-Spot)\n" +
-                "Foto siap dioptimasi ke ketajaman maksimal Status WhatsApp."
-        progressBar.progress = 0
-        tvStatusLog.text = "Status: Foto siap! Tekan tombol PROSES HD+ / AUTO SPLIT."
-        btnProcess.isEnabled = true
-        btnShareWa.isEnabled = false
+        try {
+            val boundsOpts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            contentResolver.openInputStream(uri)?.use {
+                BitmapFactory.decodeStream(it, null, boundsOpts)
+            }
+            val origW = boundsOpts.outWidth
+            val origH = boundsOpts.outHeight
+            val origKb = getFileSizeKb(uri)
+
+            tvMediaInfo.text = "MODE: FOTO HD+ 2K ANTI-BLUR\n" +
+                    "File Asli: ${origW}x${origH} (${origKb} KB)\n" +
+                    "Target Optimasi: Upscale 2K HD + Penajaman Teks (HQ 98%)"
+            progressBar.progress = 0
+            tvStatusLog.text = "Status: Foto siap! Tekan PROSES HD+ / AUTO SPLIT."
+            btnProcess.isEnabled = true
+            btnShareWa.isEnabled = false
+        } catch (e: Exception) {
+            tvMediaInfo.text = "Gagal membaca info foto: ${e.message}"
+        }
     }
 
     private fun prepareOutputDir(): File {
@@ -159,49 +193,53 @@ class MainActivity : AppCompatActivity() {
         btnProcess.isEnabled = false
         btnShareWa.isEnabled = false
         progressBar.progress = 2
-        tvStatusLog.text = "Memulai Hardware GPU Encoding..."
+        tvStatusLog.text = "Menjalankan GPU Hardware Encoder..."
 
         scope.launch(Dispatchers.IO) {
             val outDir = prepareOutputDir()
-            // Zero-copy: baca langsung dari SAF URI tanpa menyalin file raksasa ke cache
             val safeInputPath = FFmpegKitConfig.getSafParameterForRead(this@MainActivity, uri)
             val interval = getSplitInterval()
             val outputPattern = File(outDir, "StatusHD_Part_%03d.mp4").absolutePath
 
-            // Pertahankan resolusi asli jika sisi terpendek <= 1080p; turunkan ke 1080p hanya jika 2K/4K
-            val scaleFilter = "scale='if(gt(min(iw,ih),1080),if(lt(iw,ih),1080,-2),iw)':'if(gt(min(iw,ih),1080),if(lt(iw,ih),-2,1080),ih)':flags=bicubic,format=yuv420p"
+            // Kunci ukuran tiap klip di bawah 14.5 MB agar lolos dari kompresi paksa WhatsApp
+            val videoBitrateKbps = if (interval == 30) 3400 else 1850
+            val gopFrames = 30 * interval
+
+            // Upscale 720p ke 1080p (sisi terpendek = 1080) + micro-sharpening halus agar teks/wajah tetap tajam
+            val vfFilter = "scale='if(lt(iw,ih),1080,-2)':'if(lt(iw,ih),-2,1080)':flags=bicubic,unsharp=3:3:0.5:3:3:0.0,format=yuv420p"
 
             FFmpegKitConfig.enableStatisticsCallback { stats: Statistics ->
                 val timeSec = (stats.time / 1000.0).toInt()
                 val pct = if (videoDurationSec > 0) ((timeSec * 100) / videoDurationSec).coerceIn(2, 99) else 50
                 runOnUiThread {
                     progressBar.progress = pct
-                    tvStatusLog.text = "Memproses Turbo HD+ & Split: $pct% (${timeSec}s / ${videoDurationSec}s)"
+                    tvStatusLog.text = "Memproses Video HD+ 1080p: $pct% (${timeSec}s / ${videoDurationSec}s)"
                 }
             }
 
-            // 1. Prioritas Utama: Hardware MediaCodec GPU (sangat cepat)
+            // 1. Hardware MediaCodec tanpa flag yang ditolak driver GPU Android
             val hwCmd = "-y -i \"$safeInputPath\" " +
-                    "-vf \"$scaleFilter\" " +
-                    "-c:v h264_mediacodec -b:v 4000k -maxrate 4500k -bufsize 8000k " +
-                    "-force_key_frames \"expr:gte(t,n_forced*$interval)\" " +
+                    "-vf \"$vfFilter\" " +
+                    "-r 30 -g $gopFrames " +
+                    "-c:v h264_mediacodec -b:v ${videoBitrateKbps}k " +
                     "-c:a aac -b:a 128k -ac 2 " +
                     "-f segment -segment_time $interval -reset_timestamps 1 " +
                     "\"$outputPattern\""
 
             var session = FFmpegKit.execute(hwCmd)
 
-            // 2. Fallback otomatis ke CPU ultrafast multi-thread jika device menolak MediaCodec
+            // 2. Fallback superfast (bukan ultrafast agar detail tidak pecah)
             if (!ReturnCode.isSuccess(session.returnCode)) {
                 runOnUiThread {
-                    tvStatusLog.text = "Beralih ke mode kompatibilitas cepat..."
+                    tvStatusLog.text = "Mengoptimasi dengan mode kompatibilitas HD+..."
                 }
                 outDir.listFiles()?.forEach { it.delete() }
 
                 val swCmd = "-y -i \"$safeInputPath\" " +
-                        "-vf \"$scaleFilter\" " +
-                        "-c:v libx264 -preset ultrafast -threads 8 -crf 22 -maxrate 4000k -bufsize 8000k " +
-                        "-force_key_frames \"expr:gte(t,n_forced*$interval)\" " +
+                        "-vf \"$vfFilter\" " +
+                        "-r 30 -g $gopFrames " +
+                        "-c:v libx264 -preset superfast -threads 8 " +
+                        "-b:v ${videoBitrateKbps}k -maxrate ${videoBitrateKbps + 300}k -bufsize ${videoBitrateKbps * 2}k " +
                         "-c:a aac -b:a 128k -ac 2 " +
                         "-f segment -segment_time $interval -reset_timestamps 1 " +
                         "\"$outputPattern\""
@@ -217,8 +255,12 @@ class MainActivity : AppCompatActivity() {
                         ?: emptyList()
 
                     outputFiles.addAll(generated)
+                    val avgSizeMb = if (outputFiles.isNotEmpty()) {
+                        String.format("%.1f", outputFiles.sumOf { it.length() } / (1024.0 * 1024.0 * outputFiles.size))
+                    } else "0"
+
                     progressBar.progress = 100
-                    tvStatusLog.text = "Selesai! ${outputFiles.size} bagian Video HD+ siap dikirim ke Status WA."
+                    tvStatusLog.text = "Selesai! ${outputFiles.size} klip HD+ (~${avgSizeMb} MB/klip) siap dikirim ke WA."
                     btnShareWa.isEnabled = outputFiles.isNotEmpty()
                 } else {
                     tvStatusLog.text = "Gagal memproses video: ${session.failStackTrace}"
@@ -231,37 +273,21 @@ class MainActivity : AppCompatActivity() {
     private fun processPhotoHd(uri: Uri) {
         btnProcess.isEnabled = false
         btnShareWa.isEnabled = false
-        progressBar.progress = 40
-        tvStatusLog.text = "Mengoptimasi Foto HD+..."
+        progressBar.progress = 30
+        tvStatusLog.text = "Meningkatkan Foto ke 2K HD+ & Menajamkan Detail..."
 
         scope.launch(Dispatchers.IO) {
             try {
                 val outDir = prepareOutputDir()
-                val maxSide = 2048
-
-                // 1. Cek dimensi asli tanpa memuat seluruh piksel ke RAM
-                val boundsOpts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                contentResolver.openInputStream(uri)?.use {
-                    BitmapFactory.decodeStream(it, null, boundsOpts)
-                }
-
-                // 2. Hitung subsampling cepat agar dekode instan
-                var sampleSize = 1
-                while ((boundsOpts.outWidth / sampleSize) > maxSide * 2 ||
-                    (boundsOpts.outHeight / sampleSize) > maxSide * 2
-                ) {
-                    sampleSize *= 2
-                }
 
                 val decodeOpts = BitmapFactory.Options().apply {
-                    inSampleSize = sampleSize
                     inPreferredConfig = Bitmap.Config.ARGB_8888
                 }
                 var bitmap = contentResolver.openInputStream(uri)?.use {
                     BitmapFactory.decodeStream(it, null, decodeOpts)
-                } ?: throw Exception("Foto tidak dapat dibaca")
+                } ?: throw Exception("Foto tidak terbaca")
 
-                // 3. Perbaiki orientasi EXIF kamera agar foto potret tidak miring
+                // Perbaiki orientasi EXIF
                 val rotationDegrees = contentResolver.openInputStream(uri)?.use { input ->
                     val exif = ExifInterface(input)
                     when (exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)) {
@@ -279,12 +305,20 @@ class MainActivity : AppCompatActivity() {
                     bitmap = rotated
                 }
 
-                // 4. Scale presisi ke 2048px sweet-spot WhatsApp
-                val ratio = minOf(maxSide.toFloat() / bitmap.width, maxSide.toFloat() / bitmap.height, 1.0f)
-                val targetW = (bitmap.width * ratio).toInt()
-                val targetH = (bitmap.height * ratio).toInt()
+                // Upscale gambar kecil/720p ke minimal 1152px sisi pendek (maks 2560px sisi panjang)
+                // agar WhatsApp masuk ke mode HD dan tidak mengaburkan teks
+                val minSide = minOf(bitmap.width, bitmap.height)
+                val maxSide = maxOf(bitmap.width, bitmap.height)
+                val targetScale = when {
+                    minSide < 1152 -> minOf(1152f / minSide, 2560f / maxSide)
+                    maxSide > 2560 -> 2560f / maxSide
+                    else -> 1.0f
+                }
 
-                val finalBitmap = if (ratio < 1.0f) {
+                val targetW = (bitmap.width * targetScale).toInt()
+                val targetH = (bitmap.height * targetScale).toInt()
+
+                val resizedBitmap = if (targetScale != 1.0f) {
                     val scaled = Bitmap.createScaledBitmap(bitmap, targetW, targetH, true)
                     if (scaled != bitmap) bitmap.recycle()
                     scaled
@@ -292,18 +326,23 @@ class MainActivity : AppCompatActivity() {
                     bitmap
                 }
 
+                // Terapkan Crisp Edge Sharpening agar huruf & garis tetap tajam
+                val sharpenedBitmap = applyCrispSharpen(resizedBitmap)
+                if (sharpenedBitmap != resizedBitmap) resizedBitmap.recycle()
+
                 val outFile = File(outDir, "StatusHD_Photo.jpg")
                 FileOutputStream(outFile).use { fos ->
-                    finalBitmap.compress(Bitmap.CompressFormat.JPEG, 92, fos)
+                    // Kualitas 98 menjaga ukuran file & detail tetap tinggi dibanding file asli
+                    sharpenedBitmap.compress(Bitmap.CompressFormat.JPEG, 98, fos)
                 }
-                finalBitmap.recycle()
+                sharpenedBitmap.recycle()
 
                 outputFiles.add(outFile)
 
                 withContext(Dispatchers.Main) {
                     progressBar.progress = 100
                     val sizeKb = outFile.length() / 1024
-                    tvStatusLog.text = "Selesai! Foto HD+ (${targetW}x${targetH}, ${sizeKb} KB) siap dikirim."
+                    tvStatusLog.text = "Selesai! Foto HD+ (${targetW}x${targetH}, ${sizeKb} KB) siap dikirim ke WA."
                     btnShareWa.isEnabled = true
                     btnProcess.isEnabled = true
                 }
@@ -314,6 +353,39 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+    }
+
+    private fun applyCrispSharpen(src: Bitmap): Bitmap {
+        val width = src.width
+        val height = src.height
+        val pixels = IntArray(width * height)
+        src.getPixels(pixels, 0, width, 0, 0, width, height)
+        val result = pixels.copyOf()
+
+        for (y in 1 until height - 1) {
+            val rowOffset = y * width
+            for (x in 1 until width - 1) {
+                val idx = rowOffset + x
+                val c = pixels[idx]
+                val top = pixels[idx - width]
+                val bottom = pixels[idx + width]
+                val left = pixels[idx - 1]
+                val right = pixels[idx + 1]
+
+                val r = (((c shr 16) and 0xFF) * 1.6f -
+                        (((top shr 16) and 0xFF) + ((bottom shr 16) and 0xFF) +
+                         ((left shr 16) and 0xFF) + ((right shr 16) and 0xFF)) * 0.15f).toInt().coerceIn(0, 255)
+                val g = (((c shr 8) and 0xFF) * 1.6f -
+                        (((top shr 8) and 0xFF) + ((bottom shr 8) and 0xFF) +
+                         ((left shr 8) and 0xFF) + ((right shr 8) and 0xFF)) * 0.15f).toInt().coerceIn(0, 255)
+                val b = ((c and 0xFF) * 1.6f -
+                        ((top and 0xFF) + (bottom and 0xFF) +
+                         (left and 0xFF) + (right and 0xFF)) * 0.15f).toInt().coerceIn(0, 255)
+
+                result[idx] = (0xFF shl 24) or (r shl 16) or (g shl 8) or b
+            }
+        }
+        return Bitmap.createBitmap(result, width, height, Bitmap.Config.ARGB_8888)
     }
 
     private fun shareToWhatsApp() {
