@@ -10,9 +10,10 @@ import android.widget.*
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.FileProvider
-import com.arthenica.ffmpegkit.FFmpegKit
-import com.arthenica.ffmpegkit.FFmpegKitConfig
-import com.arthenica.ffmpegkit.ReturnCode
+import com.antonkarpenko.ffmpegkit.FFmpegKit
+import com.antonkarpenko.ffmpegkit.FFmpegKitConfig
+import com.antonkarpenko.ffmpegkit.ReturnCode
+import com.antonkarpenko.ffmpegkit.Statistics
 import kotlinx.coroutines.*
 import java.io.File
 import java.io.FileOutputStream
@@ -173,7 +174,7 @@ class MainActivity : AppCompatActivity() {
                     "-f segment -segment_time $interval -reset_timestamps 1 " +
                     "\"$outputPattern\""
 
-            FFmpegKitConfig.enableStatisticsCallback { stats ->
+            FFmpegKitConfig.enableStatisticsCallback { stats: Statistics ->
                 val timeSec = (stats.time / 1000.0).toInt()
                 val pct = if (videoDurationSec > 0) ((timeSec * 100) / videoDurationSec).coerceIn(0, 99) else 50
                 runOnUiThread {
