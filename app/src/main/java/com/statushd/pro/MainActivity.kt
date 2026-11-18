@@ -127,18 +127,17 @@ class MainActivity : AppCompatActivity() {
     private fun calculateOptimalVideoParams(durationSec: Int, interval: Int): Triple<Int, Int, String> {
         val effectiveClipSec = minOf(max(1, durationSec), interval)
         return if (rbAutoBypass.isChecked) {
-            // Batas atas pass-through Status WA: max sisi 1280px (720p HD) & ukuran ~4.9 MB per klip
-            // Agar WhatsApp TIDAK melakukan downscale paksa ke 480p setelah upload selesai
-            val targetSizeMb = 4.9
-            val bitrateKbps = ((targetSizeMb * 8192.0) / effectiveClipSec - 112.0).toInt().coerceIn(750, 3200)
-            val label = "1280p Pass-Through @ ${String.format("%.2f", bitrateKbps / 1000.0)} Mbps (~4.9 MB)"
-            Triple(bitrateKbps, 1280, label)
+            // 720p HD dengan Bitrate Tinggi (Fokus Ketajaman Maksimal tanpa kompresi server WA)
+            val targetSizeMb = 8.5
+            val bitrateKbps = ((targetSizeMb * 8192.0) / effectiveClipSec - 96.0).toInt().coerceIn(2500, 4800)
+            val label = "720p HD Sharp @ ${String.format("%.2f", bitrateKbps / 1000.0)} Mbps (~8.5 MB)"
+            Triple(bitrateKbps, 720, label)
         } else {
-            // Mode 1080p: ukuran ~8.8 MB per klip (pengguna wajib ketuk ikon HD di atas layar WA)
-            val targetSizeMb = 8.8
-            val bitrateKbps = ((targetSizeMb * 8192.0) / effectiveClipSec - 128.0).toInt().coerceIn(1300, 4800)
-            val label = "1920p Full HD @ ${String.format("%.2f", bitrateKbps / 1000.0)} Mbps (~8.8 MB)"
-            Triple(bitrateKbps, 1920, label)
+            // Mode 864p High-Density (Keseimbangan Resolusi dan Bitrate Tinggi)
+            val targetSizeMb = 9.2
+            val bitrateKbps = ((targetSizeMb * 8192.0) / effectiveClipSec - 96.0).toInt().coerceIn(2800, 5200)
+            val label = "864p Ultra HD @ ${String.format("%.2f", bitrateKbps / 1000.0)} Mbps (~9.2 MB)"
+            Triple(bitrateKbps, 864, label)
         }
     }
 
@@ -180,7 +179,7 @@ class MainActivity : AppCompatActivity() {
             timelinePreview.append("• ... s/d Part $totalParts (${videoDurationSec}s)\n")
         }
 
-        tvMediaInfo.text = "MODE: VIDEO HD+ (ANTI-DOWNSCALE SERVER WA)\n" +
+        tvMediaInfo.text = "MODE: VIDEO SHARP HD+ (ANTI-BLUR)\n" +
                 "Asli: ${savedWidth}x${savedHeight} (${savedOriginalSizeKb} KB) | Durasi: ${videoDurationSec} Detik\n" +
                 "Target: $targetLabel | Total: $totalParts Bagian\n\n" +
                 "Rincian Timeline:\n$timelinePreview"
@@ -223,7 +222,7 @@ class MainActivity : AppCompatActivity() {
         btnProcess.isEnabled = false
         btnShareWa.isEnabled = false
         progressBar.progress = 2
-        tvStatusLog.text = "Merender Video HD+ Presisi Tinggi..."
+        tvStatusLog.text = "Merender Video Sharp HD+..."
 
         scope.launch(Dispatchers.IO) {
             val outDir = prepareOutputDir()
@@ -234,25 +233,26 @@ class MainActivity : AppCompatActivity() {
             val (videoBitrateKbps, maxSidePx, _) = calculateOptimalVideoParams(videoDurationSec, interval)
             val gopFrames = 30 * minOf(videoDurationSec, interval)
 
-            val vfFilter = "scale='if(lt(iw,ih),-2,$maxSidePx)':'if(lt(iw,ih),$maxSidePx,-2)':flags=lanczos,unsharp=3:3:0.65:3:3:0.0,format=yuv420p"
+            // Filter Lanczos + Unsharp Agresif untuk menjaga ketajaman teks/garis di video game & lirik
+            val vfFilter = "scale='if(lt(iw,ih),-2,$maxSidePx)':'if(lt(iw,ih),$maxSidePx,-2)':flags=lanczos,unsharp=5:5:1.0:3:3:0.5,format=yuv420p"
 
             FFmpegKitConfig.enableStatisticsCallback { stats: Statistics ->
                 val timeSec = (stats.time / 1000.0).toInt()
                 val pct = if (videoDurationSec > 0) ((timeSec * 100) / videoDurationSec).coerceIn(2, 99) else 50
                 runOnUiThread {
                     progressBar.progress = pct
-                    tvStatusLog.text = "Memproses Video HD+ (${maxSidePx}p): $pct% (${timeSec}s / ${videoDurationSec}s)"
+                    tvStatusLog.text = "Memproses Video Sharp HD+ (${maxSidePx}p): $pct% (${timeSec}s / ${videoDurationSec}s)"
                 }
             }
 
-            // Preset medium + B-frames (-bf 2) + aq-mode 3: menjaga teks & area gelap tetap tajam di ukuran ~4.9 MB
+            // Encoder High Profile dengan CRF/Bitrate tinggi + aq-mode 3 untuk detail maksimal
             val cmd = "-y -i \"$safeInputPath\" " +
                     "-vf \"$vfFilter\" " +
                     "-r 30 -g $gopFrames " +
                     "-c:v libx264 -preset medium -profile:v high -level 4.1 -threads 8 " +
                     "-bf 2 -aq-mode 3 " +
-                    "-b:v ${videoBitrateKbps}k -maxrate ${videoBitrateKbps + 150}k -bufsize ${videoBitrateKbps * 2}k " +
-                    "-c:a aac -b:a 112k -ac 2 " +
+                    "-b:v ${videoBitrateKbps}k -maxrate ${videoBitrateKbps + 400}k -bufsize ${videoBitrateKbps * 2}k " +
+                    "-c:a aac -b:a 128k -ac 2 " +
                     "-f segment -segment_time $interval -reset_timestamps 1 " +
                     "\"$outputPattern\""
 
@@ -271,12 +271,7 @@ class MainActivity : AppCompatActivity() {
                     } else "0"
 
                     progressBar.progress = 100
-                    val tip = if (rbAutoBypass.isChecked) {
-                        "Langsung kirim ke Status WA!"
-                    } else {
-                        "Ketuk ikon HD di atas layar WA sebelum kirim!"
-                    }
-                    tvStatusLog.text = "Selesai! ${outputFiles.size} klip (~${avgSizeMb} MB/klip). $tip"
+                    tvStatusLog.text = "Selesai! ${outputFiles.size} klip (~${avgSizeMb} MB/klip) sangat jernih. Kirim ke Status WA!"
                     btnShareWa.isEnabled = outputFiles.isNotEmpty()
                 } else {
                     tvStatusLog.text = "Gagal memproses video: ${session.failStackTrace}"
