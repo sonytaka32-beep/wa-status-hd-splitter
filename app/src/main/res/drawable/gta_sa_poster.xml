@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="800dp"
+    android:height="600dp"
+    android:viewportWidth="800"
+    android:viewportHeight="600">
+
+    <!-- Latar Belakang / Garis Batas Hitam -->
+    <path android:fillColor="#000000" android:pathData="M0,0 h800 v600 h-800 z" />
+
+    <!-- Baris Atas -->
+    <path android:fillColor="#9C7F4A" android:pathData="M0,0 h260 v190 h-260 z" />
+    <path android:fillColor="#4B5320" android:pathData="M270,0 h260 v190 h-260 z" />
+    <path android:fillColor="#3B3B3B" android:pathData="M540,0 h260 v190 h-260 z" />
+
+    <!-- Baris Tengah -->
+    <path android:fillColor="#6B705C" android:pathData="M0,200 h260 v190 h-260 z" />
+    <path android:fillColor="#8A5A44" android:pathData="M270,200 h260 v190 h-260 z" />
+    <path android:fillColor="#A56336" android:pathData="M540,200 h260 v190 h-260 z" />
+
+    <!-- Baris Bawah -->
+    <path android:fillColor="#2F3E46" android:pathData="M0,400 h260 v200 h-260 z" />
+    <path android:fillColor="#DDA15E" android:pathData="M270,400 h260 v200 h-260 z" />
+    <path android:fillColor="#283618" android:pathData="M540,400 h260 v200 h-260 z" />
+
+</vector>
