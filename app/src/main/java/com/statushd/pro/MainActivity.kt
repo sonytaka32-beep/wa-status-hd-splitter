@@ -126,21 +126,23 @@ class MainActivity : AppCompatActivity() {
             rotatedH = tempW
         }
 
-        // PERMINTAAN USER: BIAKAN NATIVE!
-        // Maksimal 1920 (batas aman layar HP), selebihnya biarkan resolusi bawaan asli.
-        val maxSide = maxOf(rotatedW, rotatedH)
-        val scale = if (maxSide > 1920) 1920f / maxSide.toFloat() else 1.0f
-
-        var targetW = ((rotatedW * scale).toInt() / 2) * 2
-        var targetH = ((rotatedH * scale).toInt() / 2) * 2
+        // KUNCI EMAS: SAMAKAN 100% DENGAN LAYAR (NATIVE SOURCE RESOLUTION)
+        // Tanpa upscaling/downscaling, hanya memastikan angka resolusi genap (dibagi 2).
+        var targetW = (rotatedW / 2) * 2
+        var targetH = (rotatedH / 2) * 2
+        
+        // Fallback jika tidak terbaca (biasanya 720x1612 untuk HP kamu)
         if (targetW < 2) targetW = 720
-        if (targetH < 2) targetH = 1280
+        if (targetH < 2) targetH = 1612
 
         val limitSelectionSec = limitValuesSec[spinnerDurationLimit.selectedItemPosition]
         val processDurationLimit = if (limitSelectionSec > 0) minOf(videoDurationSec, limitSelectionSec) else videoDurationSec
 
-        // PERMINTAAN USER: NAIKKAN BITRATE SEBESAR MUNGKIN (7000k - 7500k)
-        val bitrateKbps = 7500 
+        val interval = 30
+        val effectiveClipSec = minOf(max(1, processDurationLimit), interval)
+        
+        // BITRATE BRAVO HD SAKTI (3500k - 7500k) DIKEMBALIKAN!
+        val bitrateKbps = ((9.5 * 8192.0) / effectiveClipSec - 128.0).toInt().coerceIn(3500, 7500)
 
         return VideoPlan(targetW, targetH, transposeStr, rotDesc, bitrateKbps, processDurationLimit)
     }
@@ -181,7 +183,7 @@ class MainActivity : AppCompatActivity() {
         
         tvMediaInfo.text = "> SONYBAE DEFINITIVE ENGINE (VIDEO)\n" +
                 "> Source: ${origDisplayW}x${origDisplayH} | ${videoDurationSec}s | ${savedOriginalSizeKb} KB\n" +
-                "> Target: Native Resolution | Massive 7500k Bitrate\n" +
+                "> Target: Native Screen ${plan.outW}x${plan.outH} (BRAVO 3500k)\n" +
                 "> Config: ${plan.rotateDesc} | Output Parts: $totalParts (@30s)"
     }
 
@@ -219,7 +221,7 @@ class MainActivity : AppCompatActivity() {
         btnProcess.isEnabled = false
         btnShareWa.isEnabled = false
         progressBar.progress = 2
-        tvStatusLog.text = "Injecting Massive Bitrate Engine (Native HD)..."
+        tvStatusLog.text = "Injecting BRAVO HD Native Engine..."
 
         scope.launch(Dispatchers.IO) {
             val outDir = prepareOutputDir()
@@ -238,11 +240,11 @@ class MainActivity : AppCompatActivity() {
                 val pct = if (plan.processDurationLimitSec > 0) ((timeSec * 100) / plan.processDurationLimitSec).coerceIn(2, 99) else 50
                 runOnUiThread {
                     progressBar.progress = pct
-                    tvStatusLog.text = "Encoding Native 7500k: $pct% (${timeSec}s / ${plan.processDurationLimitSec}s)"
+                    tvStatusLog.text = "Encoding Native HD: $pct% (${timeSec}s / ${plan.processDurationLimitSec}s)"
                 }
             }
 
-            // KODE SAKTI: RESOLUSI NATIVE, MAX BITRATE (7500k)
+            // KODE SAKTI BRAVO HD 3500K - 7500K (NATIVE RESOLUTION)
             val cmd = "-y -i \"$safeInputPath\" " +
                     "$timeLimitCmd " +
                     "-vf \"$vfFilter\" " +
