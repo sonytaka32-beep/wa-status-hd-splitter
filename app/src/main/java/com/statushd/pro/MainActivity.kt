@@ -43,7 +43,6 @@ class MainActivity : AppCompatActivity() {
     private var origDisplayH: Int = 1280
     private var savedOriginalSizeKb: Long = 0L
 
-    // Array Opsi Durasi (Dalam Detik)
     private val limitOptions = arrayOf("Full Video (No Limit)", "30 Seconds (1 Part)", "1 Minute (2 Parts)", "1 Minute 30s (3 Parts)", "2 Minutes (4 Parts)", "2 Minutes 30s (5 Parts)", "3 Minutes (6 Parts)", "5 Minutes (10 Parts)")
     private val limitValuesSec = intArrayOf(0, 30, 60, 90, 120, 150, 180, 300)
 
@@ -127,9 +126,10 @@ class MainActivity : AppCompatActivity() {
             rotatedH = tempW
         }
 
-        // KUNCI EMAS: Max 720p (1280) agar 3500 kbps menjadi super tajam!
+        // PERMINTAAN USER: BIAKAN NATIVE!
+        // Maksimal 1920 (batas aman layar HP), selebihnya biarkan resolusi bawaan asli.
         val maxSide = maxOf(rotatedW, rotatedH)
-        val scale = if (maxSide > 1280) 1280f / maxSide.toFloat() else 1.0f
+        val scale = if (maxSide > 1920) 1920f / maxSide.toFloat() else 1.0f
 
         var targetW = ((rotatedW * scale).toInt() / 2) * 2
         var targetH = ((rotatedH * scale).toInt() / 2) * 2
@@ -139,8 +139,8 @@ class MainActivity : AppCompatActivity() {
         val limitSelectionSec = limitValuesSec[spinnerDurationLimit.selectedItemPosition]
         val processDurationLimit = if (limitSelectionSec > 0) minOf(videoDurationSec, limitSelectionSec) else videoDurationSec
 
-        // BITRATE BRAVO HD TERKUNCI (3500k) UNTUK KUALITAS MAKSIMAL DI 720P
-        val bitrateKbps = 3500
+        // PERMINTAAN USER: NAIKKAN BITRATE SEBESAR MUNGKIN (7000k - 7500k)
+        val bitrateKbps = 7500 
 
         return VideoPlan(targetW, targetH, transposeStr, rotDesc, bitrateKbps, processDurationLimit)
     }
@@ -181,7 +181,7 @@ class MainActivity : AppCompatActivity() {
         
         tvMediaInfo.text = "> SONYBAE DEFINITIVE ENGINE (VIDEO)\n" +
                 "> Source: ${origDisplayW}x${origDisplayH} | ${videoDurationSec}s | ${savedOriginalSizeKb} KB\n" +
-                "> Target: 720p True HD (BRAVO 3500k) | Limit: $durText\n" +
+                "> Target: Native Resolution | Massive 7500k Bitrate\n" +
                 "> Config: ${plan.rotateDesc} | Output Parts: $totalParts (@30s)"
     }
 
@@ -219,7 +219,7 @@ class MainActivity : AppCompatActivity() {
         btnProcess.isEnabled = false
         btnShareWa.isEnabled = false
         progressBar.progress = 2
-        tvStatusLog.text = "Injecting BRAVO HD 3500 Engine (Anti-Blur)..."
+        tvStatusLog.text = "Injecting Massive Bitrate Engine (Native HD)..."
 
         scope.launch(Dispatchers.IO) {
             val outDir = prepareOutputDir()
@@ -238,11 +238,11 @@ class MainActivity : AppCompatActivity() {
                 val pct = if (plan.processDurationLimitSec > 0) ((timeSec * 100) / plan.processDurationLimitSec).coerceIn(2, 99) else 50
                 runOnUiThread {
                     progressBar.progress = pct
-                    tvStatusLog.text = "Encoding BRAVO HD 3500: $pct% (${timeSec}s / ${plan.processDurationLimitSec}s)"
+                    tvStatusLog.text = "Encoding Native 7500k: $pct% (${timeSec}s / ${plan.processDurationLimitSec}s)"
                 }
             }
 
-            // KODE SAKTI BRAVO HD 3500
+            // KODE SAKTI: RESOLUSI NATIVE, MAX BITRATE (7500k)
             val cmd = "-y -i \"$safeInputPath\" " +
                     "$timeLimitCmd " +
                     "-vf \"$vfFilter\" " +
@@ -264,7 +264,7 @@ class MainActivity : AppCompatActivity() {
 
                     outputFiles.addAll(generated)
                     progressBar.progress = 100
-                    tvStatusLog.text = "System: HD Payload Successfully Injected!"
+                    tvStatusLog.text = "System: Native HD Payload Successfully Injected!"
                     btnShareWa.isEnabled = outputFiles.isNotEmpty()
                 } else {
                     tvStatusLog.text = "Error: Injection Failed. " + session.failStackTrace
