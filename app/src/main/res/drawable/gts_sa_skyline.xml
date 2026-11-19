@@ -1,18 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="800dp"
-    android:height="400dp"
+    android:height="450dp"
     android:viewportWidth="800"
-    android:viewportHeight="400">
+    android:viewportHeight="450">
 
-    <!-- Siluet Kota Berlapis (San Fierro Vibe) -->
-    <!-- Lapis Belakang -->
-    <path android:fillColor="#819C70" android:pathData="M0,400 L0,200 L60,200 L60,240 L130,240 L130,120 L190,120 L190,180 L230,180 L230,220 L300,220 L300,90 L380,90 L380,180 L440,180 L440,110 L520,110 L520,240 L600,240 L600,160 L680,160 L680,260 L750,260 L750,190 L800,190 L800,400 Z" />
+    <!-- Lapis Belakang (Tinggi & Rapat) -->
+    <path android:fillColor="#769165" android:pathData="M0,450 L0,150 L80,150 L80,220 L150,220 L150,80 L220,80 L220,160 L280,160 L280,50 L350,50 L350,180 L420,180 L420,90 L480,90 L480,200 L560,200 L560,70 L640,70 L640,190 L720,190 L720,100 L800,100 L800,450 Z" />
     
-    <!-- Lapis Depan (Lebih Gelap) -->
-    <path android:fillColor="#6A8559" android:pathData="M0,400 L0,280 L40,280 L40,320 L100,320 L100,210 L160,210 L160,260 L210,260 L210,300 L280,300 L280,160 L360,160 L360,240 L420,240 L420,180 L500,180 L500,290 L580,290 L580,210 L660,210 L660,310 L730,310 L730,230 L800,230 L800,400 Z" />
+    <!-- Lapis Depan (Lebih Gelap & Tebal) -->
+    <path android:fillColor="#5D7350" android:pathData="M0,450 L0,220 L50,220 L50,280 L120,280 L120,160 L180,160 L180,240 L260,240 L260,110 L320,110 L320,200 L400,200 L400,130 L460,130 L460,250 L540,250 L540,140 L600,140 L600,270 L680,270 L680,180 L760,180 L760,290 L800,290 L800,450 Z" />
     
-    <!-- Detail Tiang Jembatan -->
-    <path android:strokeColor="#6A8559" android:strokeWidth="5" android:pathData="M320,160 L320,80 M540,210 L540,120 M130,210 L130,140" />
-
+    <!-- Detail Tiang & Kabel Jembatan (Lebih Tegas) -->
+    <path android:strokeColor="#5D7350" android:strokeWidth="8" android:pathData="M350,110 L350,30 M640,140 L640,50 M120,160 L120,70" />
 </vector>
