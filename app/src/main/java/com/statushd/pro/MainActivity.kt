@@ -8,8 +8,8 @@ import android.media.ExifInterface
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Bundle
-import android.provider.OpenableColumns
 import android.view.View
+import android.provider.OpenableColumns
 import android.widget.*
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -81,12 +81,10 @@ class MainActivity : AppCompatActivity() {
         rbKeepOriginal = findViewById(R.id.rbKeepOriginal)
         spinnerDurationLimit = findViewById(R.id.spinnerDurationLimit)
 
-        // Setup Spinner Adapter (Teks Putih)
         val spinnerAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, limitOptions)
         spinnerAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         spinnerDurationLimit.adapter = spinnerAdapter
         
-        // Ganti warna teks spinner jadi putih saat dipilih agar terlihat di background hitam
         spinnerDurationLimit.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>, view: View?, pos: Int, id: Long) {
                 (parent.getChildAt(0) as? TextView)?.setTextColor(android.graphics.Color.WHITE)
@@ -129,27 +127,20 @@ class MainActivity : AppCompatActivity() {
             rotatedH = tempW
         }
 
+        // KUNCI EMAS: Max 720p (1280) agar 3500 kbps menjadi super tajam!
         val maxSide = maxOf(rotatedW, rotatedH)
-        val minSide = minOf(rotatedW, rotatedH)
-
-        val scale = if (maxSide > 1920 || minSide > 1080) {
-            minOf(1920f / maxSide.toFloat(), 1080f / minSide.toFloat())
-        } else {
-            1.0f
-        }
+        val scale = if (maxSide > 1280) 1280f / maxSide.toFloat() else 1.0f
 
         var targetW = ((rotatedW * scale).toInt() / 2) * 2
         var targetH = ((rotatedH * scale).toInt() / 2) * 2
         if (targetW < 2) targetW = 720
         if (targetH < 2) targetH = 1280
 
-        // Ambil Limit Durasi dari Dropdown
         val limitSelectionSec = limitValuesSec[spinnerDurationLimit.selectedItemPosition]
         val processDurationLimit = if (limitSelectionSec > 0) minOf(videoDurationSec, limitSelectionSec) else videoDurationSec
 
-        val interval = 30
-        val effectiveClipSec = minOf(max(1, processDurationLimit), interval)
-        val bitrateKbps = ((9.5 * 8192.0) / effectiveClipSec - 128.0).toInt().coerceIn(3500, 7500)
+        // BITRATE BRAVO HD TERKUNCI (3500k) UNTUK KUALITAS MAKSIMAL DI 720P
+        val bitrateKbps = 3500
 
         return VideoPlan(targetW, targetH, transposeStr, rotDesc, bitrateKbps, processDurationLimit)
     }
@@ -190,7 +181,7 @@ class MainActivity : AppCompatActivity() {
         
         tvMediaInfo.text = "> SONYBAE DEFINITIVE ENGINE (VIDEO)\n" +
                 "> Source: ${origDisplayW}x${origDisplayH} | ${videoDurationSec}s | ${savedOriginalSizeKb} KB\n" +
-                "> Target: BRAVO HD Engine | Process Limit: $durText\n" +
+                "> Target: 720p True HD (BRAVO 3500k) | Limit: $durText\n" +
                 "> Config: ${plan.rotateDesc} | Output Parts: $totalParts (@30s)"
     }
 
@@ -228,7 +219,7 @@ class MainActivity : AppCompatActivity() {
         btnProcess.isEnabled = false
         btnShareWa.isEnabled = false
         progressBar.progress = 2
-        tvStatusLog.text = "Injecting BRAVO HD Engine (Anti-Compression)..."
+        tvStatusLog.text = "Injecting BRAVO HD 3500 Engine (Anti-Blur)..."
 
         scope.launch(Dispatchers.IO) {
             val outDir = prepareOutputDir()
@@ -240,8 +231,6 @@ class MainActivity : AppCompatActivity() {
             val gopFrames = 30 * interval
             
             val vfFilter = "${plan.transposeFilter}scale=${plan.outW}:${plan.outH}:flags=lanczos,format=yuv420p"
-
-            // Implementasi Limit Waktu Potong
             val timeLimitCmd = if (plan.processDurationLimitSec < videoDurationSec) "-t ${plan.processDurationLimitSec}" else ""
 
             FFmpegKitConfig.enableStatisticsCallback { stats: Statistics ->
@@ -249,11 +238,11 @@ class MainActivity : AppCompatActivity() {
                 val pct = if (plan.processDurationLimitSec > 0) ((timeSec * 100) / plan.processDurationLimitSec).coerceIn(2, 99) else 50
                 runOnUiThread {
                     progressBar.progress = pct
-                    tvStatusLog.text = "Encoding BRAVO HD: $pct% (${timeSec}s / ${plan.processDurationLimitSec}s)"
+                    tvStatusLog.text = "Encoding BRAVO HD 3500: $pct% (${timeSec}s / ${plan.processDurationLimitSec}s)"
                 }
             }
 
-            // KODE SAKTI BRAVO HD DITAMBAH LIMIT WAKTU "-t"
+            // KODE SAKTI BRAVO HD 3500
             val cmd = "-y -i \"$safeInputPath\" " +
                     "$timeLimitCmd " +
                     "-vf \"$vfFilter\" " +
@@ -275,7 +264,7 @@ class MainActivity : AppCompatActivity() {
 
                     outputFiles.addAll(generated)
                     progressBar.progress = 100
-                    tvStatusLog.text = "System: Trimmed Payload Successfully Injected!"
+                    tvStatusLog.text = "System: HD Payload Successfully Injected!"
                     btnShareWa.isEnabled = outputFiles.isNotEmpty()
                 } else {
                     tvStatusLog.text = "Error: Injection Failed. " + session.failStackTrace
