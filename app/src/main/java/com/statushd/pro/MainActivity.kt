@@ -125,8 +125,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun analyzePhoto(uri: Uri) {
         tvMediaInfo.text = "> SONYBAE DEFINITIVE ENGINE (PHOTO)\n" +
-                "> Target: 1080p MP4 Container Payload\n" +
-                "> Action: Bypassing WA 150KB Image Compressor"
+                "> Target: 1080p MP4 Micro-Motion Stream\n" +
+                "> Action: Bypassing WA Static Image & Video Compressors"
         progressBar.progress = 0
         tvStatusLog.text = "System: Photo Loaded. Ready for Build."
         btnProcess.isEnabled = true
@@ -154,7 +154,6 @@ class MainActivity : AppCompatActivity() {
             val isHorizontal = origDisplayW > origDisplayH
             val transpose = if (rbRotateAuto.isChecked && isHorizontal) "transpose=1," else ""
             
-            // Bypass Rule Terkuat: Baseline Profile + CRF 16 + Max resolusi 1280 (HD) + Faststart
             val vfFilter = "${transpose}scale='min(1280,iw)':-2:flags=lanczos,format=yuv420p"
 
             FFmpegKitConfig.enableStatisticsCallback { stats: Statistics ->
@@ -166,7 +165,6 @@ class MainActivity : AppCompatActivity() {
                 }
             }
 
-            // Command Baseline Level 3.0: Ringan di mata server WA, tapi visualnya loss-less karena CRF 16
             val cmd = "-y -i \"$safeInputPath\" " +
                     "-vf \"$vfFilter\" " +
                     "-r 30 -g 90 " +
@@ -221,7 +219,7 @@ class MainActivity : AppCompatActivity() {
                     if (rotBmp != bitmap) bitmap.recycle(); bitmap = rotBmp
                 }
 
-                // Foto aman dibuat 1080p karena akan dibungkus sebagai video durasi pendek
+                // Hitung dimensi 1080p yang genap
                 val scale = 1920f / maxOf(bitmap.width, bitmap.height).toFloat()
                 var tW = (bitmap.width * scale).toInt()
                 var tH = (bitmap.height * scale).toInt()
@@ -237,14 +235,21 @@ class MainActivity : AppCompatActivity() {
 
                 runOnUiThread {
                     progressBar.progress = 60
-                    tvStatusLog.text = "Injecting Image to Video 5 Detik..."
+                    tvStatusLog.text = "Injecting Micro-Motion to Bypass Server..."
                 }
 
                 val outFile = File(outDir, "StatusHD_Photo.mp4")
+                
+                // INJEKSI GERAKAN: Menggunakan filter zoompan untuk membuat pergerakan mikroskopis (tidak terlihat mata) 
+                // dari zoom 1.000 ke 1.001 selama 5 detik. Server WA akan mendeteksinya sebagai video bergerak sungguhan,
+                // sehingga tidak akan dikompres ulang menggunakan mesin kompresor foto statis.
                 val cmd = "-y -loop 1 -framerate 30 -i \"${tempPng.absolutePath}\" " +
-                        "-t 5 -c:v libx264 -preset veryfast -tune stillimage " +
-                        "-profile:v baseline -level 3.0 -pix_fmt yuv420p " +
-                        "-crf 16 -maxrate 3000k -bufsize 6000k " +
+                        "-t 5 " +
+                        "-vf \"zoompan=z='min(zoom+0.00005,1.001)':d=150:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=${tW}x${tH}\",format=yuv420p " +
+                        "-c:v libx264 -preset medium " +
+                        "-profile:v high -level 4.1 " +
+                        "-crf 15 -maxrate 6000k -bufsize 12000k " +
+                        "-movflags +faststart " +
                         "\"${outFile.absolutePath}\""
 
                 val session = FFmpegKit.execute(cmd)
@@ -257,7 +262,7 @@ class MainActivity : AppCompatActivity() {
                         tvStatusLog.text = "System: Photo Payload Ready."
                         btnShareWa.isEnabled = true
                     } else {
-                        tvStatusLog.text = "Error: Build failed."
+                        tvStatusLog.text = "Error: Build failed. " + session.failStackTrace
                     }
                     btnProcess.isEnabled = true
                 }
