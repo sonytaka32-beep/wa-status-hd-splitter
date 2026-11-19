@@ -124,13 +124,26 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun analyzePhoto(uri: Uri) {
-        tvMediaInfo.text = "> SONYBAE DEFINITIVE ENGINE (PHOTO)\n" +
-                "> Target: Static MP4 720p HD Payload\n" +
-                "> Action: Bypassing WA 150KB Image Compressor"
-        progressBar.progress = 0
-        tvStatusLog.text = "System: Photo Loaded. Ready for Build."
-        btnProcess.isEnabled = true
-        btnShareWa.isEnabled = false
+        try {
+            val boundsOpts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            contentResolver.openInputStream(uri)?.use {
+                BitmapFactory.decodeStream(it, null, boundsOpts)
+            }
+            origDisplayW = boundsOpts.outWidth
+            origDisplayH = boundsOpts.outHeight
+            savedOriginalSizeKb = getFileSizeKb(uri)
+            
+            tvMediaInfo.text = "> SONYBAE DEFINITIVE ENGINE (PHOTO)\n" +
+                    "> Source: ${origDisplayW}x${origDisplayH} | ${savedOriginalSizeKb} KB\n" +
+                    "> Target: Native JPEG 1600px Max (Zero Blur)\n" +
+                    "> Action: Direct WA Photo Bypass Injector"
+            progressBar.progress = 0
+            tvStatusLog.text = "System: Photo Loaded. Ready for Build."
+            btnProcess.isEnabled = true
+            btnShareWa.isEnabled = false
+        } catch (e: Exception) {
+            tvMediaInfo.text = "Error reading photo: ${e.message}"
+        }
     }
 
     private fun prepareOutputDir(): File {
@@ -154,7 +167,6 @@ class MainActivity : AppCompatActivity() {
             val isHorizontal = origDisplayW > origDisplayH
             val transpose = if (rbRotateAuto.isChecked && isHorizontal) "transpose=1," else ""
             
-            // Aturan Emas: Sisi paling panjang tidak boleh melebihi 1280px agar lolos sensor WA.
             val vfFilter = "${transpose}scale='if(gt(iw,ih),min(1280,iw),-2)':'if(gt(iw,ih),-2,min(1280,ih))':flags=lanczos,unsharp=3:3:0.3:3:3:0.0,format=yuv420p"
 
             FFmpegKitConfig.enableStatisticsCallback { stats: Statistics ->
@@ -186,7 +198,7 @@ class MainActivity : AppCompatActivity() {
 
                     outputFiles.addAll(generated)
                     progressBar.progress = 100
-                    tvStatusLog.text = "System: Payload Successfully Injected!"
+                    tvStatusLog.text = "System: Video Payload Successfully Injected!"
                     btnShareWa.isEnabled = outputFiles.isNotEmpty()
                 } else {
                     tvStatusLog.text = "Error: Injection Failed. " + session.failStackTrace
@@ -200,70 +212,75 @@ class MainActivity : AppCompatActivity() {
         btnProcess.isEnabled = false
         btnShareWa.isEnabled = false
         progressBar.progress = 25
-        tvStatusLog.text = "Building Static HD Container..."
+        tvStatusLog.text = "Processing Pure Native JPEG (Anti-Blur)..."
 
         scope.launch(Dispatchers.IO) {
             try {
                 val outDir = prepareOutputDir()
+                
+                // Decode gambar asli
                 val decodeOpts = BitmapFactory.Options().apply { inPreferredConfig = Bitmap.Config.ARGB_8888 }
-                var bitmap = contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, decodeOpts) } ?: throw Exception("Image error")
+                var bitmap = contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, decodeOpts) } ?: throw Exception("Image decode error")
 
+                // Cek rotasi EXIF dari gambar asli
                 val rot = contentResolver.openInputStream(uri)?.use { input ->
                     when (ExifInterface(input).getAttributeInt(ExifInterface.TAG_ORIENTATION, 1)) {
                         6 -> 90f; 3 -> 180f; 8 -> 270f; else -> 0f
                     }
                 } ?: 0f
 
+                // Putar gambar jika orientasinya salah
                 if (rot != 0f) {
                     val mat = Matrix().apply { postRotate(rot) }
                     val rotBmp = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, mat, true)
-                    if (rotBmp != bitmap) bitmap.recycle(); bitmap = rotBmp
+                    if (rotBmp != bitmap) {
+                        bitmap.recycle()
+                        bitmap = rotBmp
+                    }
                 }
-
-                // Pra-Scale agar FFmpeg tidak kehabisan memori jika foto asli beresolusi 50MP
-                val scale = 1920f / maxOf(bitmap.width, bitmap.height).toFloat()
-                if (scale < 1.0f) {
-                    val tW = (bitmap.width * scale).toInt()
-                    val tH = (bitmap.height * scale).toInt()
-                    val scaled = Bitmap.createScaledBitmap(bitmap, tW, tH, true)
-                    if (scaled != bitmap) { bitmap.recycle(); bitmap = scaled }
-                }
-
-                val tempPng = File(cacheDir, "hd_frame.png")
-                FileOutputStream(tempPng).use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
-                bitmap.recycle()
 
                 runOnUiThread {
-                    progressBar.progress = 60
-                    tvStatusLog.text = "Encoding Static Frame to Anti-Blur MP4..."
+                    progressBar.progress = 50
+                    tvStatusLog.text = "Rescaling to WA Sweet Spot (Max 1600px)..."
                 }
 
-                val outFile = File(outDir, "StatusHD_Photo.mp4")
-                
-                // INJEKSI KETAJAMAN: Filter scale memastikan sisi terpanjang maksimal 1280 (Aman dari kompresi WA).
-                // Filter unsharp=5:5:0.8 berfungsi menegaskan warna merah/putih di latar gelap agar tidak kabur (counter chroma subsampling).
-                // Dibuat statis murni (-tune stillimage) tanpa zoompan agar piksel teks tidak bergetar/berbayang.
-                val vfFilter = "scale='if(gt(iw,ih),min(1280,iw),-2)':'if(gt(iw,ih),-2,min(1280,ih))':flags=lanczos,unsharp=5:5:0.8:3:3:0.0,format=yuv420p"
-                
-                val cmd = "-y -loop 1 -framerate 30 -i \"${tempPng.absolutePath}\" " +
-                        "-t 5 -vf \"$vfFilter\" " +
-                        "-c:v libx264 -preset fast -tune stillimage " +
-                        "-profile:v baseline -level 3.0 -threads 8 " +
-                        "-crf 15 -maxrate 3000k -bufsize 6000k " +
-                        "-movflags +faststart " +
-                        "\"${outFile.absolutePath}\""
+                // WhatsApp membatasi gambar maksimal 1600px pada sisi terpanjang tanpa kompresi kasar.
+                // Jika gambar lebih besar dari 1600px, kita kecilkan dengan mulus (Bilinear).
+                val maxSide = maxOf(bitmap.width, bitmap.height)
+                val targetMax = 1600f
+                if (maxSide > targetMax) {
+                    val scale = targetMax / maxSide
+                    val tW = (bitmap.width * scale).toInt()
+                    val tH = (bitmap.height * scale).toInt()
+                    
+                    val scaled = Bitmap.createScaledBitmap(bitmap, tW, tH, true)
+                    if (scaled != bitmap) {
+                        bitmap.recycle()
+                        bitmap = scaled
+                    }
+                }
 
-                val session = FFmpegKit.execute(cmd)
-                tempPng.delete()
+                runOnUiThread {
+                    progressBar.progress = 80
+                    tvStatusLog.text = "Saving JPEG at Maximum Quality (100%)..."
+                }
+
+                // Simpan sebagai file JPEG murni dengan kualitas 100% (tidak dikompres, Lossless-like)
+                val outFile = File(outDir, "StatusHD_Photo.jpg")
+                FileOutputStream(outFile).use { fos ->
+                    bitmap.compress(Bitmap.CompressFormat.JPEG, 100, fos)
+                }
+                bitmap.recycle()
 
                 withContext(Dispatchers.Main) {
-                    if (ReturnCode.isSuccess(session.returnCode) && outFile.exists()) {
+                    if (outFile.exists() && outFile.length() > 0) {
                         outputFiles.add(outFile)
                         progressBar.progress = 100
-                        tvStatusLog.text = "System: Photo Payload Ready."
+                        val sizeKb = outFile.length() / 1024
+                        tvStatusLog.text = "System: Pure Photo Ready (${sizeKb} KB). Zero Blur Guaranteed."
                         btnShareWa.isEnabled = true
                     } else {
-                        tvStatusLog.text = "Error: Build failed. " + session.failStackTrace
+                        tvStatusLog.text = "Error: Failed to save photo."
                     }
                     btnProcess.isEnabled = true
                 }
@@ -279,14 +296,28 @@ class MainActivity : AppCompatActivity() {
     private fun shareToWhatsApp() {
         if (outputFiles.isEmpty()) return
         val uris = outputFiles.map { FileProvider.getUriForFile(this, "${packageName}.provider", it) }
+        
+        // Bedakan MIME type berdasarkan file yang diproses (video atau foto)
+        val mimeType = if (isVideoMode) "video/mp4" else "image/jpeg"
+        
         val intent = if (uris.size == 1) {
-            Intent(Intent.ACTION_SEND).apply { type = "video/mp4"; putExtra(Intent.EXTRA_STREAM, uris[0]) }
+            Intent(Intent.ACTION_SEND).apply { 
+                type = mimeType
+                putExtra(Intent.EXTRA_STREAM, uris[0]) 
+            }
         } else {
-            Intent(Intent.ACTION_SEND_MULTIPLE).apply { type = "video/mp4"; putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(uris)) }
+            Intent(Intent.ACTION_SEND_MULTIPLE).apply { 
+                type = mimeType
+                putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(uris)) 
+            }
         }
+        
         intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         intent.setPackage("com.whatsapp")
-        try { startActivity(intent) } catch (e: Exception) {
+        
+        try { 
+            startActivity(intent) 
+        } catch (e: Exception) {
             intent.setPackage(null)
             startActivity(Intent.createChooser(intent, "Send to Status WA"))
         }
