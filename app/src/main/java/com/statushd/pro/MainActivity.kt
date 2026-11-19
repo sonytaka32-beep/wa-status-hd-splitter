@@ -43,6 +43,7 @@ class MainActivity : AppCompatActivity() {
     private val outputFiles = ArrayList<File>()
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
+    // Struktur Data untuk Kalkulasi Resolusi Bravo HD
     data class VideoPlan(
         val outW: Int,
         val outH: Int,
@@ -94,6 +95,36 @@ class MainActivity : AppCompatActivity() {
         } catch (e: Exception) { 0L }
     }
 
+    // FUNGSI YANG HILANG SEBELUMNYA (Kalkulator Bravo HD)
+    private fun buildVideoPlan(): VideoPlan {
+        val isHorizontal = origDisplayW > origDisplayH
+
+        val (transposeFilter, rotDesc, rotatedW, rotatedH) = when {
+            rbRotateAuto.isChecked && isHorizontal -> Quadruple("transpose=1", "Auto Portrait", origDisplayH, origDisplayW)
+            else -> Quadruple(null, "Original", origDisplayW, origDisplayH)
+        }
+
+        val maxSide = maxOf(rotatedW, rotatedH)
+        val minSide = minOf(rotatedW, rotatedH)
+
+        val scale = if (maxSide > 1920 || minSide > 1080) {
+            minOf(1920f / maxSide.toFloat(), 1080f / minSide.toFloat())
+        } else { 1.0f }
+
+        // Memastikan output genap (syarat wajib H.264)
+        var targetW = ((rotatedW * scale).toInt() / 2) * 2
+        var targetH = ((rotatedH * scale).toInt() / 2) * 2
+        if (targetW < 2) targetW = 720
+        if (targetH < 2) targetH = 1280
+
+        val interval = 30
+        val effectiveClipSec = minOf(max(1, videoDurationSec), interval)
+        // Hitung batas bitrate presisi sesuai versi awal (Bravo HD)
+        val bitrateKbps = ((9.5 * 8192.0) / effectiveClipSec - 128.0).toInt().coerceIn(2500, 7500)
+
+        return VideoPlan(targetW, targetH, transposeFilter, rotDesc, bitrateKbps)
+    }
+
     private fun analyzeVideo(uri: Uri) {
         try {
             val retriever = MediaMetadataRetriever()
@@ -125,11 +156,11 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateVideoSplitPreview() {
         val totalParts = ceil(videoDurationSec.toDouble() / 30.0).toInt()
-        val plan = buildVideoPlan()
+        val plan = buildVideoPlan() // Sekarang fungsi ini sudah terdefinisi!
         
         tvMediaInfo.text = "> SONYBAE DEFINITIVE ENGINE (VIDEO)\n" +
                 "> Source: ${origDisplayW}x${origDisplayH} | ${videoDurationSec}s | ${savedOriginalSizeKb} KB\n" +
-                "> Target: ${plan.outW}x${plan.outH} (BRAVO HD ENGINE V1)\n" +
+                "> Target: True Native High Profile (BRAVO HD)\n" +
                 "> Config: ${plan.rotateDesc} | Parts: $totalParts (@30s)"
     }
 
@@ -145,7 +176,7 @@ class MainActivity : AppCompatActivity() {
             
             tvMediaInfo.text = "> SONYBAE DEFINITIVE ENGINE (PHOTO)\n" +
                     "> Source: ${origDisplayW}x${origDisplayH} | ${savedOriginalSizeKb} KB\n" +
-                    "> Target: MP4 Stream 5s Container (Zero Zoompan)\n" +
+                    "> Target: MP4 Stream 5s Container (PlayStore Method)\n" +
                     "> Action: Direct WA Photo Bypass Injector"
             progressBar.progress = 0
             tvStatusLog.text = "System: Photo Loaded. Ready for Build."
@@ -175,13 +206,11 @@ class MainActivity : AppCompatActivity() {
             val outputPattern = File(outDir, "StatusHD_Part_%03d.mp4").absolutePath
 
             val plan = buildVideoPlan()
-            val gopFrames = 30 * minOf(videoDurationSec, 30)
+            val interval = 30
+            val gopFrames = 30 * interval
             
-            val filters = ArrayList<String>()
-            if (plan.transposeFilter != null) filters.add(plan.transposeFilter)
-            filters.add("scale=${plan.outW}:${plan.outH}:flags=lanczos")
-            filters.add("format=yuv420p")
-            val vfChain = filters.joinToString(",")
+            val transpose = if (plan.transposeFilter != null) "${plan.transposeFilter}," else ""
+            val vfFilter = "${transpose}scale=${plan.outW}:${plan.outH}:flags=lanczos,format=yuv420p"
 
             FFmpegKitConfig.enableStatisticsCallback { stats: Statistics ->
                 val timeSec = (stats.time / 1000.0).toInt()
@@ -192,14 +221,15 @@ class MainActivity : AppCompatActivity() {
                 }
             }
 
+            // KODE SAKTI BRAVO HD (High Profile, Level 4.2, CRF 15) TANPA GANGGUAN MOVFLAGS
             val cmd = "-y -i \"$safeInputPath\" " +
-                    "-vf \"$vfChain\" " +
+                    "-vf \"$vfFilter\" " +
                     "-r 30 -g $gopFrames " +
                     "-c:v libx264 -preset medium -profile:v high -level 4.2 -threads 8 " +
                     "-crf 15 -maxrate ${plan.bitrateKbps}k -bufsize ${plan.bitrateKbps * 2}k " +
                     "-bf 3 -refs 4 -aq-mode 3 " +
                     "-c:a aac -b:a 192k -ar 48000 -ac 2 " +
-                    "-f segment -segment_time 30 -reset_timestamps 1 " +
+                    "-f segment -segment_time $interval -reset_timestamps 1 " +
                     "\"$outputPattern\""
 
             val session = FFmpegKit.execute(cmd)
@@ -250,6 +280,7 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
 
+                // Memaksa resolusi maksimal 1080p agar MP4 optimal sebagai video foto
                 val scale = minOf(1920f / maxOf(bitmap.width, bitmap.height).toFloat(), 1080f / minOf(bitmap.width, bitmap.height).toFloat()).coerceAtMost(1.0f)
                 var pW = (bitmap.width * scale).toInt()
                 var pH = (bitmap.height * scale).toInt()
@@ -265,12 +296,14 @@ class MainActivity : AppCompatActivity() {
 
                 runOnUiThread {
                     progressBar.progress = 60
-                    tvStatusLog.text = "Encoding Static MP4 Stream..."
+                    tvStatusLog.text = "Encoding Stream MP4 Tanpa Zoompan..."
                 }
 
+                // ENGINE FOTO: MP4 Statis 5 Detik MURNI
                 val outFile = File(outDir, "StatusHD_Photo.mp4")
                 val cmd = "-y -loop 1 -framerate 30 -i \"${tempPng.absolutePath}\" " +
-                        "-t 5 -c:v libx264 -preset medium -tune stillimage " +
+                        "-t 5 " +
+                        "-c:v libx264 -preset medium -tune stillimage " +
                         "-profile:v high -level 4.2 -pix_fmt yuv420p " +
                         "-crf 15 -maxrate 6000k -bufsize 12000k " +
                         "-movflags +faststart " +
@@ -283,7 +316,7 @@ class MainActivity : AppCompatActivity() {
                     if (ReturnCode.isSuccess(session.returnCode) && outFile.exists() && outFile.length() > 0) {
                         outputFiles.add(outFile)
                         progressBar.progress = 100
-                        tvStatusLog.text = "System: Photo Stream Ready. Zero Blur Guaranteed."
+                        tvStatusLog.text = "System: Photo Stream Ready. Bye bye blur!"
                         btnShareWa.isEnabled = true
                     } else {
                         tvStatusLog.text = "Error: Failed to encode stream."
@@ -303,7 +336,7 @@ class MainActivity : AppCompatActivity() {
         if (outputFiles.isEmpty()) return
         val uris = outputFiles.map { FileProvider.getUriForFile(this, "${packageName}.provider", it) }
         
-        val mimeType = "video/mp4"
+        val mimeType = "video/mp4" 
         
         val intent = if (uris.size == 1) {
             Intent(Intent.ACTION_SEND).apply { 
