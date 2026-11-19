@@ -43,6 +43,7 @@ class MainActivity : AppCompatActivity() {
     private val outputFiles = ArrayList<File>()
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
+    // Struktur Data untuk Kalkulasi Resolusi Bravo HD
     data class VideoPlan(
         val outW: Int,
         val outH: Int,
@@ -94,7 +95,7 @@ class MainActivity : AppCompatActivity() {
         } catch (e: Exception) { 0L }
     }
 
-    // FUNGSI BARU: Upscale ke 1080p agar WhatsApp re-encode tetap menjaga ketajaman
+    // Engine Kalkulator Bravo HD yang Telah Direstorasi
     private fun buildVideoPlan(): VideoPlan {
         val isHorizontal = origDisplayW > origDisplayH
 
@@ -103,25 +104,26 @@ class MainActivity : AppCompatActivity() {
             else -> Quadruple(null, "Original", origDisplayW, origDisplayH)
         }
 
-        // STRATEGI BARU: UPSCALE KE 1080p
-        // Agar saat WA merender ulang videonya (karena ditambah musik),
-        // penurunan kualitas (downscale ke 720p) tetap menyisakan ketajaman tinggi.
         val maxSide = maxOf(rotatedW, rotatedH)
-        val scale = if (maxSide < 1920) 1920f / maxSide.toFloat() else 1.0f
+        val minSide = minOf(rotatedW, rotatedH)
+
+        // Native 1:1 Pixel Mapping (Sama persis dengan Versi 5 yang sangat tajam)
+        val scale = if (maxSide > 1920 || minSide > 1080) {
+            minOf(1920f / maxSide.toFloat(), 1080f / minSide.toFloat())
+        } else {
+            1.0f
+        }
 
         var targetW = ((rotatedW * scale).toInt() / 2) * 2
         var targetH = ((rotatedH * scale).toInt() / 2) * 2
-
-        // Batas aman minimal agar tidak error
-        if (targetW < 2) targetW = 1080
-        if (targetH < 2) targetH = 1920
+        if (targetW < 2) targetW = 720
+        if (targetH < 2) targetH = 1280
 
         val interval = 30
         val effectiveClipSec = minOf(max(1, videoDurationSec), interval)
-
-        // Bitrate diturunkan sedikit (Max 3000k) untuk mengimbangi resolusi 1080p yang besar,
-        // mencegah file menjadi terlalu bengkak yang memicu kompresi super brutal dari WA.
-        val bitrateKbps = ((9.5 * 8192.0) / effectiveClipSec - 128.0).toInt().coerceIn(2500, 3000)
+        
+        // RESTORASI BATAS BAWAH BITRATE (3500k) AGAR CRF-15 TIDAK MATI KUTU!
+        val bitrateKbps = ((9.5 * 8192.0) / effectiveClipSec - 128.0).toInt().coerceIn(3500, 7500)
 
         return VideoPlan(targetW, targetH, transposeFilter, rotDesc, bitrateKbps)
     }
@@ -156,13 +158,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateVideoSplitPreview() {
-        val totalParts = ceil(videoDurationSec.toDouble() / 30.0).toInt()
+        val interval = getSplitInterval()
+        val totalParts = ceil(videoDurationSec.toDouble() / interval.toDouble()).toInt()
         val plan = buildVideoPlan()
         
         tvMediaInfo.text = "> SONYBAE DEFINITIVE ENGINE (VIDEO)\n" +
                 "> Source: ${origDisplayW}x${origDisplayH} | ${videoDurationSec}s | ${savedOriginalSizeKb} KB\n" +
-                "> Target: 1080p Upscale Injection (Music Editor Bypass)\n" +
-                "> Config: ${plan.rotateDesc} | Parts: $totalParts (@30s)"
+                "> Target: ${plan.outW}x${plan.outH} (BRAVO HD ENGINE V1)\n" +
+                "> Rotasi: ${plan.rotateDesc} | Parts: $totalParts (@${interval}s)"
     }
 
     private fun analyzePhoto(uri: Uri) {
@@ -199,39 +202,42 @@ class MainActivity : AppCompatActivity() {
         btnProcess.isEnabled = false
         btnShareWa.isEnabled = false
         progressBar.progress = 2
-        tvStatusLog.text = "Injecting Music-Bypass Algorithm (1080p)..."
+        tvStatusLog.text = "Injecting BRAVO HD Engine (Anti-Compression)..."
 
         scope.launch(Dispatchers.IO) {
             val outDir = prepareOutputDir()
             val safeInputPath = FFmpegKitConfig.getSafParameterForRead(this@MainActivity, uri)
+            val interval = 30
             val outputPattern = File(outDir, "StatusHD_Part_%03d.mp4").absolutePath
 
             val plan = buildVideoPlan()
-            val interval = 30
             val gopFrames = 30 * minOf(videoDurationSec, interval)
 
-            val transpose = if (plan.transposeFilter != null) "${plan.transposeFilter}," else ""
-
-            // Tambahkan unsharp halus untuk menajamkan piksel setelah di-upscale ke 1080p
-            val vfFilter = "${transpose}scale=${plan.outW}:${plan.outH}:flags=lanczos,unsharp=3:3:0.5:3:3:0.0,format=yuv420p"
+            // Rangkai Filter: Rotasi (jika aktif) + Resolusi Presisi Tanpa Unsharp Berlebihan
+            val filters = ArrayList<String>()
+            if (plan.transposeFilter != null) {
+                filters.add(plan.transposeFilter)
+            }
+            filters.add("scale=${plan.outW}:${plan.outH}:flags=lanczos")
+            filters.add("format=yuv420p")
+            val vfChain = filters.joinToString(",")
 
             FFmpegKitConfig.enableStatisticsCallback { stats: Statistics ->
                 val timeSec = (stats.time / 1000.0).toInt()
                 val pct = if (videoDurationSec > 0) ((timeSec * 100) / videoDurationSec).coerceIn(2, 99) else 50
                 runOnUiThread {
                     progressBar.progress = pct
-                    tvStatusLog.text = "Encoding 1080p Payload: $pct% (${timeSec}s / ${videoDurationSec}s)"
+                    tvStatusLog.text = "Memproses Video HD+ (${plan.outW}x${plan.outH}): $pct% (${timeSec}s / ${videoDurationSec}s)"
                 }
             }
 
-            // Command: Profile Main (Lebih ringan untuk di-render ulang WA), CRF 18
+            // KODE SAKTI BRAVO HD (High Profile, Level 4.2, CRF 15) TANPA ANTRIAN MAXRATE YANG DIBAHENTIKAN OLEH DRIVER GPU ANDROID
             val cmd = "-y -i \"$safeInputPath\" " +
                     "-vf \"$vfFilter\" " +
                     "-r 30 -g $gopFrames " +
-                    "-c:v libx264 -preset fast -profile:v main -level 4.1 -threads 8 " +
-                    "-crf 18 -maxrate ${plan.bitrateKbps}k -bufsize ${plan.bitrateKbps * 2}k " +
-                    "-bf 2 " +
-                    "-c:a aac -b:a 128k -ar 44100 -ac 2 " +
+                    "-c:v libx264 -preset ultrafast -profile:v high -level 4.2 -threads 8 " +
+                    "-crf 15 -maxrate ${plan.bitrateKbps}k -bufsize ${plan.bitrateKbps * 2}k " +
+                    "-c:a aac -b:a 128k -ar 48000 -ac 2 " +
                     "-f segment -segment_time $interval -reset_timestamps 1 " +
                     "\"$outputPattern\""
 
@@ -245,10 +251,10 @@ class MainActivity : AppCompatActivity() {
 
                     outputFiles.addAll(generated)
                     progressBar.progress = 100
-                    tvStatusLog.text = "System: Video Payload Successfully Injected!"
+                    tvStatusLog.text = "Selesai! ${outputFiles.size} klip (${plan.outW}x${plan.outH}, ~${avgSizeMb(outputFiles)} MB/klip) siap dikirim ke WA!"
                     btnShareWa.isEnabled = outputFiles.isNotEmpty()
                 } else {
-                    tvStatusLog.text = "Error: Injection Failed. " + session.failStackTrace
+                    tvStatusLog.text = "Gagal memproses video: ${session.failStackTrace}"
                 }
                 btnProcess.isEnabled = true
             }
@@ -299,7 +305,7 @@ class MainActivity : AppCompatActivity() {
 
                 runOnUiThread {
                     progressBar.progress = 60
-                    tvStatusLog.text = "Encoding Stream MP4 Tanpa Zoompan..."
+                    tvStatusLog.text = "Encoding Static MP4 Tanpa Zoompan..."
                 }
 
                 // ENGINE FOTO: MP4 Statis 5 Detik MURNI
