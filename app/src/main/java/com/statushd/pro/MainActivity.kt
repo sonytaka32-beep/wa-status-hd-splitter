@@ -94,7 +94,7 @@ class MainActivity : AppCompatActivity() {
         } catch (e: Exception) { 0L }
     }
 
-    // FUNGSI YANG HILANG SEBELUMNYA (Kalkulator Bravo HD)
+    // FUNGSI BARU: Upscale ke 1080p agar WhatsApp re-encode tetap menjaga ketajaman
     private fun buildVideoPlan(): VideoPlan {
         val isHorizontal = origDisplayW > origDisplayH
 
@@ -103,26 +103,25 @@ class MainActivity : AppCompatActivity() {
             else -> Quadruple(null, "Original", origDisplayW, origDisplayH)
         }
 
+        // STRATEGI BARU: UPSCALE KE 1080p
+        // Agar saat WA merender ulang videonya (karena ditambah musik),
+        // penurunan kualitas (downscale ke 720p) tetap menyisakan ketajaman tinggi.
         val maxSide = maxOf(rotatedW, rotatedH)
-        val minSide = minOf(rotatedW, rotatedH)
-
-        // Native 1:1 Pixel Mapping (Sama persis dengan Versi 5 yang sangat tajam)
-        val scale = if (maxSide > 1920 || minSide > 1080) {
-            minOf(1920f / maxSide.toFloat(), 1080f / minSide.toFloat())
-        } else { 
-            1.0f 
-        }
+        val scale = if (maxSide < 1920) 1920f / maxSide.toFloat() else 1.0f
 
         var targetW = ((rotatedW * scale).toInt() / 2) * 2
         var targetH = ((rotatedH * scale).toInt() / 2) * 2
-        if (targetW < 2) targetW = 720
-        if (targetH < 2) targetH = 1280
+
+        // Batas aman minimal agar tidak error
+        if (targetW < 2) targetW = 1080
+        if (targetH < 2) targetH = 1920
 
         val interval = 30
         val effectiveClipSec = minOf(max(1, videoDurationSec), interval)
-        
-        // RESTORASI BATAS BAWAH BITRATE (3500k) AGAR CRF-15 TIDAK MATI KUTU!
-        val bitrateKbps = ((9.5 * 8192.0) / effectiveClipSec - 128.0).toInt().coerceIn(3500, 7500)
+
+        // Bitrate diturunkan sedikit (Max 3000k) untuk mengimbangi resolusi 1080p yang besar,
+        // mencegah file menjadi terlalu bengkak yang memicu kompresi super brutal dari WA.
+        val bitrateKbps = ((9.5 * 8192.0) / effectiveClipSec - 128.0).toInt().coerceIn(2500, 3000)
 
         return VideoPlan(targetW, targetH, transposeFilter, rotDesc, bitrateKbps)
     }
@@ -162,7 +161,7 @@ class MainActivity : AppCompatActivity() {
         
         tvMediaInfo.text = "> SONYBAE DEFINITIVE ENGINE (VIDEO)\n" +
                 "> Source: ${origDisplayW}x${origDisplayH} | ${videoDurationSec}s | ${savedOriginalSizeKb} KB\n" +
-                "> Target: ${plan.outW}x${plan.outH} (BRAVO HD ENGINE V1)\n" +
+                "> Target: 1080p Upscale Injection (Music Editor Bypass)\n" +
                 "> Config: ${plan.rotateDesc} | Parts: $totalParts (@30s)"
     }
 
@@ -200,7 +199,7 @@ class MainActivity : AppCompatActivity() {
         btnProcess.isEnabled = false
         btnShareWa.isEnabled = false
         progressBar.progress = 2
-        tvStatusLog.text = "Injecting BRAVO HD Engine (Anti-Compression)..."
+        tvStatusLog.text = "Injecting Music-Bypass Algorithm (1080p)..."
 
         scope.launch(Dispatchers.IO) {
             val outDir = prepareOutputDir()
@@ -209,28 +208,30 @@ class MainActivity : AppCompatActivity() {
 
             val plan = buildVideoPlan()
             val interval = 30
-            val gopFrames = 30 * interval
-            
+            val gopFrames = 30 * minOf(videoDurationSec, interval)
+
             val transpose = if (plan.transposeFilter != null) "${plan.transposeFilter}," else ""
-            val vfFilter = "${transpose}scale=${plan.outW}:${plan.outH}:flags=lanczos,format=yuv420p"
+
+            // Tambahkan unsharp halus untuk menajamkan piksel setelah di-upscale ke 1080p
+            val vfFilter = "${transpose}scale=${plan.outW}:${plan.outH}:flags=lanczos,unsharp=3:3:0.5:3:3:0.0,format=yuv420p"
 
             FFmpegKitConfig.enableStatisticsCallback { stats: Statistics ->
                 val timeSec = (stats.time / 1000.0).toInt()
                 val pct = if (videoDurationSec > 0) ((timeSec * 100) / videoDurationSec).coerceIn(2, 99) else 50
                 runOnUiThread {
                     progressBar.progress = pct
-                    tvStatusLog.text = "Encoding BRAVO HD: $pct% (${timeSec}s / ${videoDurationSec}s)"
+                    tvStatusLog.text = "Encoding 1080p Payload: $pct% (${timeSec}s / ${videoDurationSec}s)"
                 }
             }
 
-            // KODE SAKTI BRAVO HD (100% IDENTIK DENGAN VERSI 5)
+            // Command: Profile Main (Lebih ringan untuk di-render ulang WA), CRF 18
             val cmd = "-y -i \"$safeInputPath\" " +
                     "-vf \"$vfFilter\" " +
                     "-r 30 -g $gopFrames " +
-                    "-c:v libx264 -preset medium -profile:v high -level 4.2 -threads 8 " +
-                    "-crf 15 -maxrate ${plan.bitrateKbps}k -bufsize ${plan.bitrateKbps * 2}k " +
-                    "-bf 3 -refs 4 -aq-mode 3 " +
-                    "-c:a aac -b:a 192k -ar 48000 -ac 2 " +
+                    "-c:v libx264 -preset fast -profile:v main -level 4.1 -threads 8 " +
+                    "-crf 18 -maxrate ${plan.bitrateKbps}k -bufsize ${plan.bitrateKbps * 2}k " +
+                    "-bf 2 " +
+                    "-c:a aac -b:a 128k -ar 44100 -ac 2 " +
                     "-f segment -segment_time $interval -reset_timestamps 1 " +
                     "\"$outputPattern\""
 
@@ -338,25 +339,25 @@ class MainActivity : AppCompatActivity() {
         if (outputFiles.isEmpty()) return
         val uris = outputFiles.map { FileProvider.getUriForFile(this, "${packageName}.provider", it) }
         
-        val mimeType = "video/mp4" 
+        val mimeType = "video/mp4"
         
         val intent = if (uris.size == 1) {
-            Intent(Intent.ACTION_SEND).apply { 
+            Intent(Intent.ACTION_SEND).apply {
                 type = mimeType
-                putExtra(Intent.EXTRA_STREAM, uris[0]) 
+                putExtra(Intent.EXTRA_STREAM, uris[0])
             }
         } else {
-            Intent(Intent.ACTION_SEND_MULTIPLE).apply { 
+            Intent(Intent.ACTION_SEND_MULTIPLE).apply {
                 type = mimeType
-                putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(uris)) 
+                putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(uris))
             }
         }
         
         intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         intent.setPackage("com.whatsapp")
         
-        try { 
-            startActivity(intent) 
+        try {
+            startActivity(intent)
         } catch (e: Exception) {
             intent.setPackage(null)
             startActivity(Intent.createChooser(intent, "Send to Status WA"))
