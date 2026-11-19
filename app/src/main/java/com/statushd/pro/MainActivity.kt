@@ -119,14 +119,14 @@ class MainActivity : AppCompatActivity() {
         
         tvMediaInfo.text = "> SONYBAE DEFINITIVE ENGINE (VIDEO)\n" +
                 "> Source: ${origDisplayW}x${origDisplayH} | ${videoDurationSec}s | ${savedOriginalSizeKb} KB\n" +
-                "> Target: 720p Baseline @ 2.5 Mbps (Anti-Compression Algorithm)\n" +
+                "> Target: Strict 720p Bounding Box (Anti-Downscale)\n" +
                 "> Config: $rotInfo | Parts: $totalParts (@30s)"
     }
 
     private fun analyzePhoto(uri: Uri) {
         tvMediaInfo.text = "> SONYBAE DEFINITIVE ENGINE (PHOTO)\n" +
-                "> Target: 1080p MP4 Micro-Motion Stream\n" +
-                "> Action: Bypassing WA Static Image & Video Compressors"
+                "> Target: Static MP4 720p HD Payload\n" +
+                "> Action: Bypassing WA 150KB Image Compressor"
         progressBar.progress = 0
         tvStatusLog.text = "System: Photo Loaded. Ready for Build."
         btnProcess.isEnabled = true
@@ -154,7 +154,8 @@ class MainActivity : AppCompatActivity() {
             val isHorizontal = origDisplayW > origDisplayH
             val transpose = if (rbRotateAuto.isChecked && isHorizontal) "transpose=1," else ""
             
-            val vfFilter = "${transpose}scale='min(1280,iw)':-2:flags=lanczos,format=yuv420p"
+            // Aturan Emas: Sisi paling panjang tidak boleh melebihi 1280px agar lolos sensor WA.
+            val vfFilter = "${transpose}scale='if(gt(iw,ih),min(1280,iw),-2)':'if(gt(iw,ih),-2,min(1280,ih))':flags=lanczos,unsharp=3:3:0.3:3:3:0.0,format=yuv420p"
 
             FFmpegKitConfig.enableStatisticsCallback { stats: Statistics ->
                 val timeSec = (stats.time / 1000.0).toInt()
@@ -169,7 +170,7 @@ class MainActivity : AppCompatActivity() {
                     "-vf \"$vfFilter\" " +
                     "-r 30 -g 90 " +
                     "-c:v libx264 -preset fast -profile:v baseline -level 3.0 -threads 8 " +
-                    "-crf 16 -maxrate 2500k -bufsize 5000k " +
+                    "-crf 17 -maxrate 2600k -bufsize 5000k " +
                     "-c:a aac -b:a 128k -ar 44100 -ac 2 " +
                     "-f segment -segment_time 30 -reset_timestamps 1 " +
                     "-segment_format_options movflags=+faststart " +
@@ -199,7 +200,7 @@ class MainActivity : AppCompatActivity() {
         btnProcess.isEnabled = false
         btnShareWa.isEnabled = false
         progressBar.progress = 25
-        tvStatusLog.text = "Building Anti-Compression Container..."
+        tvStatusLog.text = "Building Static HD Container..."
 
         scope.launch(Dispatchers.IO) {
             try {
@@ -219,36 +220,36 @@ class MainActivity : AppCompatActivity() {
                     if (rotBmp != bitmap) bitmap.recycle(); bitmap = rotBmp
                 }
 
-                // Hitung dimensi 1080p yang genap
+                // Pra-Scale agar FFmpeg tidak kehabisan memori jika foto asli beresolusi 50MP
                 val scale = 1920f / maxOf(bitmap.width, bitmap.height).toFloat()
-                var tW = (bitmap.width * scale).toInt()
-                var tH = (bitmap.height * scale).toInt()
-                if (tW % 2 != 0) tW++
-                if (tH % 2 != 0) tH++
-
-                val scaled = Bitmap.createScaledBitmap(bitmap, tW, tH, true)
-                if (scaled != bitmap) bitmap.recycle()
+                if (scale < 1.0f) {
+                    val tW = (bitmap.width * scale).toInt()
+                    val tH = (bitmap.height * scale).toInt()
+                    val scaled = Bitmap.createScaledBitmap(bitmap, tW, tH, true)
+                    if (scaled != bitmap) { bitmap.recycle(); bitmap = scaled }
+                }
 
                 val tempPng = File(cacheDir, "hd_frame.png")
-                FileOutputStream(tempPng).use { scaled.compress(Bitmap.CompressFormat.PNG, 100, it) }
-                scaled.recycle()
+                FileOutputStream(tempPng).use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                bitmap.recycle()
 
                 runOnUiThread {
                     progressBar.progress = 60
-                    tvStatusLog.text = "Injecting Micro-Motion to Bypass Server..."
+                    tvStatusLog.text = "Encoding Static Frame to Anti-Blur MP4..."
                 }
 
                 val outFile = File(outDir, "StatusHD_Photo.mp4")
                 
-                // INJEKSI GERAKAN: Menggunakan filter zoompan untuk membuat pergerakan mikroskopis (tidak terlihat mata) 
-                // dari zoom 1.000 ke 1.001 selama 5 detik. Server WA akan mendeteksinya sebagai video bergerak sungguhan,
-                // sehingga tidak akan dikompres ulang menggunakan mesin kompresor foto statis.
+                // INJEKSI KETAJAMAN: Filter scale memastikan sisi terpanjang maksimal 1280 (Aman dari kompresi WA).
+                // Filter unsharp=5:5:0.8 berfungsi menegaskan warna merah/putih di latar gelap agar tidak kabur (counter chroma subsampling).
+                // Dibuat statis murni (-tune stillimage) tanpa zoompan agar piksel teks tidak bergetar/berbayang.
+                val vfFilter = "scale='if(gt(iw,ih),min(1280,iw),-2)':'if(gt(iw,ih),-2,min(1280,ih))':flags=lanczos,unsharp=5:5:0.8:3:3:0.0,format=yuv420p"
+                
                 val cmd = "-y -loop 1 -framerate 30 -i \"${tempPng.absolutePath}\" " +
-                        "-t 5 " +
-                        "-vf \"zoompan=z='min(zoom+0.00005,1.001)':d=150:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=${tW}x${tH}\",format=yuv420p " +
-                        "-c:v libx264 -preset medium " +
-                        "-profile:v high -level 4.1 " +
-                        "-crf 15 -maxrate 6000k -bufsize 12000k " +
+                        "-t 5 -vf \"$vfFilter\" " +
+                        "-c:v libx264 -preset fast -tune stillimage " +
+                        "-profile:v baseline -level 3.0 -threads 8 " +
+                        "-crf 15 -maxrate 3000k -bufsize 6000k " +
                         "-movflags +faststart " +
                         "\"${outFile.absolutePath}\""
 
