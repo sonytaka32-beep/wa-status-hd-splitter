@@ -30,11 +30,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var progressBar: ProgressBar
     private lateinit var btnProcess: Button
     private lateinit var btnShareWa: Button
-
     private lateinit var rgRotateMode: RadioGroup
     private lateinit var rbRotateAuto: RadioButton
-    private lateinit var rgSplitInterval: RadioGroup
-    private lateinit var rb30Sec: RadioButton
 
     private var selectedUri: Uri? = null
     private var isVideoMode: Boolean = true
@@ -47,19 +44,11 @@ class MainActivity : AppCompatActivity() {
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
     private val pickVideoLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        uri?.let {
-            selectedUri = it
-            isVideoMode = true
-            analyzeVideo(it)
-        }
+        uri?.let { selectedUri = it; isVideoMode = true; analyzeVideo(it) }
     }
 
     private val pickPhotoLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        uri?.let {
-            selectedUri = it
-            isVideoMode = false
-            analyzePhoto(it)
-        }
+        uri?.let { selectedUri = it; isVideoMode = false; analyzePhoto(it) }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -71,17 +60,13 @@ class MainActivity : AppCompatActivity() {
         progressBar = findViewById(R.id.progressBar)
         btnProcess = findViewById(R.id.btnProcess)
         btnShareWa = findViewById(R.id.btnShareWa)
-
         rgRotateMode = findViewById(R.id.rgRotateMode)
         rbRotateAuto = findViewById(R.id.rbRotateAuto)
-        rgSplitInterval = findViewById(R.id.rgSplitInterval)
-        rb30Sec = findViewById(R.id.rb30Sec)
 
         findViewById<Button>(R.id.btnPickVideo).setOnClickListener { pickVideoLauncher.launch("video/*") }
         findViewById<Button>(R.id.btnPickPhoto).setOnClickListener { pickPhotoLauncher.launch("image/*") }
 
         rgRotateMode.setOnCheckedChangeListener { _, _ -> if (isVideoMode && selectedUri != null) updateVideoSplitPreview() }
-        rgSplitInterval.setOnCheckedChangeListener { _, _ -> if (isVideoMode && selectedUri != null) updateVideoSplitPreview() }
 
         btnProcess.setOnClickListener {
             val uri = selectedUri ?: return@setOnClickListener
@@ -120,33 +105,30 @@ class MainActivity : AppCompatActivity() {
             updateVideoSplitPreview()
 
             progressBar.progress = 0
-            tvStatusLog.text = "Status: Engine Bypass Siap."
+            tvStatusLog.text = "System: Video Loaded. Ready for Injection."
             btnProcess.isEnabled = true
             btnShareWa.isEnabled = false
         } catch (e: Exception) {
-            tvMediaInfo.text = "Gagal membaca video: ${e.message}"
+            tvMediaInfo.text = "Error reading video: ${e.message}"
         }
     }
 
     private fun updateVideoSplitPreview() {
-        val interval = if (rb30Sec.isChecked) 30 else 15
-        val totalParts = ceil(videoDurationSec.toDouble() / interval.toDouble()).toInt()
-        val isHorizontal = origDisplayW > origDisplayH
+        val totalParts = ceil(videoDurationSec.toDouble() / 30.0).toInt()
+        val rotInfo = if (rbRotateAuto.isChecked && origDisplayW > origDisplayH) "Auto-Rotate to Portrait" else "Keep Original"
         
-        val rotInfo = if (rbRotateAuto.isChecked && isHorizontal) "Auto Vertikal (Full Layar)" else "Asli"
-        
-        tvMediaInfo.text = "SONYBAE BYPASS ENGINE (VIDEO)\n" +
-                "Input: ${origDisplayW}x${origDisplayH} | ${videoDurationSec}s | ${savedOriginalSizeKb} KB\n" +
-                "Target WA: 720p HD @ 2.5 Mbps (Anti-Kompresi)\n" +
-                "Rotasi: $rotInfo | Output: $totalParts Bagian (@${interval}s)"
+        tvMediaInfo.text = "> SONYBAE DEFINITIVE ENGINE (VIDEO)\n" +
+                "> Source: ${origDisplayW}x${origDisplayH} | ${videoDurationSec}s | ${savedOriginalSizeKb} KB\n" +
+                "> Target: 720p Baseline @ 2.5 Mbps (Anti-Compression Algorithm)\n" +
+                "> Config: $rotInfo | Parts: $totalParts (@30s)"
     }
 
     private fun analyzePhoto(uri: Uri) {
-        tvMediaInfo.text = "SONYBAE BYPASS ENGINE (FOTO)\n" +
-                "Mode: MP4 Kontainer 5 Detik\n" +
-                "Target WA: Full HD (Mencegah foto pecah jadi 150KB)"
+        tvMediaInfo.text = "> SONYBAE DEFINITIVE ENGINE (PHOTO)\n" +
+                "> Target: 1080p MP4 Container Payload\n" +
+                "> Action: Bypassing WA 150KB Image Compressor"
         progressBar.progress = 0
-        tvStatusLog.text = "Status: Engine Bypass Siap."
+        tvStatusLog.text = "System: Photo Loaded. Ready for Build."
         btnProcess.isEnabled = true
         btnShareWa.isEnabled = false
     }
@@ -162,42 +144,36 @@ class MainActivity : AppCompatActivity() {
         btnProcess.isEnabled = false
         btnShareWa.isEnabled = false
         progressBar.progress = 2
-        tvStatusLog.text = "Menjalankan Protokol Bypass WhatsApp..."
+        tvStatusLog.text = "Injecting Anti-Compression Algorithm..."
 
         scope.launch(Dispatchers.IO) {
             val outDir = prepareOutputDir()
             val safeInputPath = FFmpegKitConfig.getSafParameterForRead(this@MainActivity, uri)
-            val interval = if (rb30Sec.isChecked) 30 else 15
             val outputPattern = File(outDir, "StatusHD_Part_%03d.mp4").absolutePath
 
-            // STRATEGI BYPASS WA: 
-            // 1. Kunci max resolusi di 720p (Batas aman Pass-Through WA)
-            // 2. Kunci bitrate max di 2.5 Mbps.
-            // Jika kita pakai 1080p atau bitrate 10Mbps, WhatsApp PASTI akan mengkompres ulang file tersebut.
-            
             val isHorizontal = origDisplayW > origDisplayH
             val transpose = if (rbRotateAuto.isChecked && isHorizontal) "transpose=1," else ""
             
-            // Filter: Rotasi -> Scale ke batas 720p -> Lanczos -> Sedikit Sharpness Natural
-            val vfFilter = "${transpose}scale='if(gt(iw,ih),min(1280,iw),-2)':'if(gt(iw,ih),-2,min(1280,ih))':flags=lanczos,unsharp=3:3:0.3:3:3:0.0,format=yuv420p"
+            // Bypass Rule Terkuat: Baseline Profile + CRF 16 + Max resolusi 1280 (HD) + Faststart
+            val vfFilter = "${transpose}scale='min(1280,iw)':-2:flags=lanczos,format=yuv420p"
 
             FFmpegKitConfig.enableStatisticsCallback { stats: Statistics ->
                 val timeSec = (stats.time / 1000.0).toInt()
                 val pct = if (videoDurationSec > 0) ((timeSec * 100) / videoDurationSec).coerceIn(2, 99) else 50
                 runOnUiThread {
                     progressBar.progress = pct
-                    tvStatusLog.text = "Encoding Bypass 720p: $pct% (${timeSec}s / ${videoDurationSec}s)"
+                    tvStatusLog.text = "Bypassing Server: $pct% (${timeSec}s / ${videoDurationSec}s)"
                 }
             }
 
-            // Command Bypass: Profile Main, Preset Fast, Bitrate Terkunci 2.5M
+            // Command Baseline Level 3.0: Ringan di mata server WA, tapi visualnya loss-less karena CRF 16
             val cmd = "-y -i \"$safeInputPath\" " +
                     "-vf \"$vfFilter\" " +
-                    "-r 30 -g ${30 * interval} " +
-                    "-c:v libx264 -preset fast -profile:v main -level 3.1 -threads 8 " +
-                    "-b:v 2500k -maxrate 2800k -bufsize 5000k " +
+                    "-r 30 -g 90 " +
+                    "-c:v libx264 -preset fast -profile:v baseline -level 3.0 -threads 8 " +
+                    "-crf 16 -maxrate 2500k -bufsize 5000k " +
                     "-c:a aac -b:a 128k -ar 44100 -ac 2 " +
-                    "-f segment -segment_time $interval -reset_timestamps 1 " +
+                    "-f segment -segment_time 30 -reset_timestamps 1 " +
                     "-segment_format_options movflags=+faststart " +
                     "\"$outputPattern\""
 
@@ -211,10 +187,10 @@ class MainActivity : AppCompatActivity() {
 
                     outputFiles.addAll(generated)
                     progressBar.progress = 100
-                    tvStatusLog.text = "Selesai! File dioptimalkan untuk Bypass Sensor WhatsApp."
+                    tvStatusLog.text = "System: Payload Successfully Injected!"
                     btnShareWa.isEnabled = outputFiles.isNotEmpty()
                 } else {
-                    tvStatusLog.text = "Gagal memproses video. Coba lagi."
+                    tvStatusLog.text = "Error: Injection Failed. " + session.failStackTrace
                 }
                 btnProcess.isEnabled = true
             }
@@ -225,13 +201,13 @@ class MainActivity : AppCompatActivity() {
         btnProcess.isEnabled = false
         btnShareWa.isEnabled = false
         progressBar.progress = 25
-        tvStatusLog.text = "Menjalankan Kontainer Foto Anti-Kompresi..."
+        tvStatusLog.text = "Building Anti-Compression Container..."
 
         scope.launch(Dispatchers.IO) {
             try {
                 val outDir = prepareOutputDir()
                 val decodeOpts = BitmapFactory.Options().apply { inPreferredConfig = Bitmap.Config.ARGB_8888 }
-                var bitmap = contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, decodeOpts) } ?: throw Exception("Foto error")
+                var bitmap = contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, decodeOpts) } ?: throw Exception("Image error")
 
                 val rot = contentResolver.openInputStream(uri)?.use { input ->
                     when (ExifInterface(input).getAttributeInt(ExifInterface.TAG_ORIENTATION, 1)) {
@@ -261,14 +237,14 @@ class MainActivity : AppCompatActivity() {
 
                 runOnUiThread {
                     progressBar.progress = 60
-                    tvStatusLog.text = "Membungkus Foto menjadi Video 5 Detik..."
+                    tvStatusLog.text = "Injecting Image to Video 5 Detik..."
                 }
 
                 val outFile = File(outDir, "StatusHD_Photo.mp4")
                 val cmd = "-y -loop 1 -framerate 30 -i \"${tempPng.absolutePath}\" " +
                         "-t 5 -c:v libx264 -preset veryfast -tune stillimage " +
-                        "-profile:v high -level 4.1 -pix_fmt yuv420p " +
-                        "-b:v 4000k -maxrate 5000k -bufsize 10000k " +
+                        "-profile:v baseline -level 3.0 -pix_fmt yuv420p " +
+                        "-crf 16 -maxrate 3000k -bufsize 6000k " +
                         "\"${outFile.absolutePath}\""
 
                 val session = FFmpegKit.execute(cmd)
@@ -278,10 +254,10 @@ class MainActivity : AppCompatActivity() {
                     if (ReturnCode.isSuccess(session.returnCode) && outFile.exists()) {
                         outputFiles.add(outFile)
                         progressBar.progress = 100
-                        tvStatusLog.text = "Selesai! Foto Anti-Buram siap dikirim."
+                        tvStatusLog.text = "System: Photo Payload Ready."
                         btnShareWa.isEnabled = true
                     } else {
-                        tvStatusLog.text = "Gagal memproses foto."
+                        tvStatusLog.text = "Error: Build failed."
                     }
                     btnProcess.isEnabled = true
                 }
@@ -306,7 +282,7 @@ class MainActivity : AppCompatActivity() {
         intent.setPackage("com.whatsapp")
         try { startActivity(intent) } catch (e: Exception) {
             intent.setPackage(null)
-            startActivity(Intent.createChooser(intent, "Kirim ke Status WA"))
+            startActivity(Intent.createChooser(intent, "Send to Status WA"))
         }
     }
 

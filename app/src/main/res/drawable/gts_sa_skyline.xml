@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="800dp"
+    android:height="400dp"
+    android:viewportWidth="800"
+    android:viewportHeight="400">
+
+    <!-- Langit Senja Los Santos (Amber ke Hijau Gelap) -->
+    <path android:fillColor="#090A08" android:pathData="M0,0 h800 v400 h-800 z" />
+    <path android:fillColor="#1F2417" android:pathData="M0,200 h800 v200 h-800 z" />
+    <path android:fillColor="#3A4026" android:pathData="M0,300 h800 v100 h-800 z" />
+
+    <!-- Siluet Gedung Pencakar Langit (Kota San Andreas) -->
+    <path android:fillColor="#000000" android:fillAlpha="0.8" android:pathData="M0,400 L0,250 L50,250 L50,300 L120,300 L120,180 L180,180 L180,150 L220,150 L220,280 L280,280 L280,100 L350,100 L350,320 L400,320 L400,200 L480,200 L480,130 L550,130 L550,260 L620,260 L620,190 L700,190 L700,280 L760,280 L760,220 L800,220 L800,400 Z" />
+    
+    <!-- Detail Tiang & Menara -->
+    <path android:strokeColor="#000000" android:strokeWidth="4" android:pathData="M315,100 L315,50 M515,130 L515,80 M150,180 L150,120" />
+    
+    <!-- Gradien Gelap Penutup Bawah -->
+    <path android:fillColor="#000000" android:fillAlpha="0.6" android:pathData="M0,350 h800 v50 h-800 z" />
+</vector>
