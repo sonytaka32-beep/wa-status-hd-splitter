@@ -43,16 +43,14 @@ class MainActivity : AppCompatActivity() {
     private val outputFiles = ArrayList<File>()
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
-    // Struktur Data untuk Kalkulasi Resolusi Bravo HD
+    // Struktur Data Kalkulasi Video
     data class VideoPlan(
         val outW: Int,
         val outH: Int,
-        val transposeFilter: String?,
+        val transposeFilter: String,
         val rotateDesc: String,
         val bitrateKbps: Int
     )
-
-    private data class Quadruple<A, B, C, D>(val first: A, val second: B, val third: C, val fourth: D)
 
     private val pickVideoLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         uri?.let { selectedUri = it; isVideoMode = true; analyzeVideo(it) }
@@ -99,15 +97,22 @@ class MainActivity : AppCompatActivity() {
     private fun buildVideoPlan(): VideoPlan {
         val isHorizontal = origDisplayW > origDisplayH
 
-        val (transposeFilter, rotDesc, rotatedW, rotatedH) = when {
-            rbRotateAuto.isChecked && isHorizontal -> Quadruple("transpose=1", "Auto Portrait", origDisplayH, origDisplayW)
-            else -> Quadruple(null, "Original", origDisplayW, origDisplayH)
+        var transposeStr = ""
+        var rotDesc = "Original"
+        var rotatedW = origDisplayW
+        var rotatedH = origDisplayH
+
+        // Logika Rotasi Diperbaiki: Jika Auto Portrait aktif dan video horizontal (gameplay)
+        if (rbRotateAuto.isChecked && isHorizontal) {
+            transposeStr = "transpose=1," // Putar 90 derajat searah jarum jam
+            rotDesc = "Auto Portrait (Rotated 90°)"
+            rotatedW = origDisplayH
+            rotatedH = origDisplayW
         }
 
         val maxSide = maxOf(rotatedW, rotatedH)
         val minSide = minOf(rotatedW, rotatedH)
 
-        // Native 1:1 Pixel Mapping (Sama persis dengan Versi 5 yang sangat tajam)
         val scale = if (maxSide > 1920 || minSide > 1080) {
             minOf(1920f / maxSide.toFloat(), 1080f / minSide.toFloat())
         } else {
@@ -121,11 +126,10 @@ class MainActivity : AppCompatActivity() {
 
         val interval = 30
         val effectiveClipSec = minOf(max(1, videoDurationSec), interval)
-        
-        // RESTORASI BATAS BAWAH BITRATE (3500k) AGAR CRF-15 TIDAK MATI KUTU!
+        // Kombinasi Bitrate Sakti (3500 - 7500 Kbps)
         val bitrateKbps = ((9.5 * 8192.0) / effectiveClipSec - 128.0).toInt().coerceIn(3500, 7500)
 
-        return VideoPlan(targetW, targetH, transposeFilter, rotDesc, bitrateKbps)
+        return VideoPlan(targetW, targetH, transposeStr, rotDesc, bitrateKbps)
     }
 
     private fun analyzeVideo(uri: Uri) {
@@ -158,14 +162,13 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateVideoSplitPreview() {
-        val interval = getSplitInterval()
-        val totalParts = ceil(videoDurationSec.toDouble() / interval.toDouble()).toInt()
+        val totalParts = ceil(videoDurationSec.toDouble() / 30.0).toInt()
         val plan = buildVideoPlan()
         
         tvMediaInfo.text = "> SONYBAE DEFINITIVE ENGINE (VIDEO)\n" +
                 "> Source: ${origDisplayW}x${origDisplayH} | ${videoDurationSec}s | ${savedOriginalSizeKb} KB\n" +
                 "> Target: ${plan.outW}x${plan.outH} (BRAVO HD ENGINE V1)\n" +
-                "> Rotasi: ${plan.rotateDesc} | Parts: $totalParts (@${interval}s)"
+                "> Config: ${plan.rotateDesc} | Parts: $totalParts (@30s)"
     }
 
     private fun analyzePhoto(uri: Uri) {
@@ -207,13 +210,13 @@ class MainActivity : AppCompatActivity() {
         scope.launch(Dispatchers.IO) {
             val outDir = prepareOutputDir()
             val safeInputPath = FFmpegKitConfig.getSafParameterForRead(this@MainActivity, uri)
-            val interval = 30
             val outputPattern = File(outDir, "StatusHD_Part_%03d.mp4").absolutePath
 
             val plan = buildVideoPlan()
-            val gopFrames = 30 * minOf(videoDurationSec, interval)
-
-            // Rangkai Filter: Rotasi (jika aktif) + Resolusi Presisi Tanpa Unsharp Berlebihan
+            val interval = 30
+            val gopFrames = 30 * interval
+            
+            // Rangkaian Filter: Rotasi (jika aktif) + Resolusi Presisi Tanpa Unsharp Berlebihan
             val filters = ArrayList<String>()
             if (plan.transposeFilter != null) {
                 filters.add(plan.transposeFilter)
@@ -231,13 +234,14 @@ class MainActivity : AppCompatActivity() {
                 }
             }
 
-            // KODE SAKTI BRAVO HD (High Profile, Level 4.2, CRF 15) TANPA ANTRIAN MAXRATE YANG DIBAHENTIKAN OLEH DRIVER GPU ANDROID
+            // Kode Sakti Bravo HD (High Profile, Level 4.2, CRF 15, Tanpa Flag Yang Ditolak Driver GPU Android)
             val cmd = "-y -i \"$safeInputPath\" " +
                     "-vf \"$vfFilter\" " +
                     "-r 30 -g $gopFrames " +
-                    "-c:v libx264 -preset ultrafast -profile:v high -level 4.2 -threads 8 " +
+                    "-c:v libx264 -preset medium -profile:v high -level 4.2 -threads 8 " +
                     "-crf 15 -maxrate ${plan.bitrateKbps}k -bufsize ${plan.bitrateKbps * 2}k " +
-                    "-c:a aac -b:a 128k -ar 48000 -ac 2 " +
+                    "-bf 3 -refs 4 -aq-mode 3 " +
+                    "-c:a aac -b:a 192k -ar 48000 -ac 2 " +
                     "-f segment -segment_time $interval -reset_timestamps 1 " +
                     "\"$outputPattern\""
 
@@ -251,7 +255,7 @@ class MainActivity : AppCompatActivity() {
 
                     outputFiles.addAll(generated)
                     progressBar.progress = 100
-                    tvStatusLog.text = "Selesai! ${outputFiles.size} klip (${plan.outW}x${plan.outH}, ~${avgSizeMb(outputFiles)} MB/klip) siap dikirim ke WA!"
+                    tvStatusLog.text = "Selesai! ${outputFiles.size} klip (${plan.outW}x${plan.outH}) siap dikirim ke WA!"
                     btnShareWa.isEnabled = outputFiles.isNotEmpty()
                 } else {
                     tvStatusLog.text = "Gagal memproses video: ${session.failStackTrace}"
@@ -265,14 +269,14 @@ class MainActivity : AppCompatActivity() {
         btnProcess.isEnabled = false
         btnShareWa.isEnabled = false
         progressBar.progress = 25
-        tvStatusLog.text = "Building Static MP4 Stream Container..."
+        tvStatusLog.text = "Merender Foto ke Jalur Full HD 1920p Anti-Blur..."
 
         scope.launch(Dispatchers.IO) {
             try {
                 val outDir = prepareOutputDir()
                 
                 val decodeOpts = BitmapFactory.Options().apply { inPreferredConfig = Bitmap.Config.ARGB_8888 }
-                var bitmap = contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, decodeOpts) } ?: throw Exception("Image decode error")
+                var bitmap = contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, decodeOpts) } ?: throw Exception("Foto tidak terbaca")
 
                 val rot = contentResolver.openInputStream(uri)?.use { input ->
                     when (ExifInterface(input).getAttributeInt(ExifInterface.TAG_ORIENTATION, 1)) {
@@ -289,7 +293,6 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
 
-                // Memaksa resolusi maksimal 1080p agar MP4 optimal sebagai video foto
                 val scale = minOf(1920f / maxOf(bitmap.width, bitmap.height).toFloat(), 1080f / minOf(bitmap.width, bitmap.height).toFloat()).coerceAtMost(1.0f)
                 var pW = (bitmap.width * scale).toInt()
                 var pH = (bitmap.height * scale).toInt()
@@ -305,14 +308,12 @@ class MainActivity : AppCompatActivity() {
 
                 runOnUiThread {
                     progressBar.progress = 60
-                    tvStatusLog.text = "Encoding Static MP4 Tanpa Zoompan..."
+                    tvStatusLog.text = "Membungkus ke Kontainer Full HD Anti-Kompresi WA..."
                 }
 
-                // ENGINE FOTO: MP4 Statis 5 Detik MURNI
                 val outFile = File(outDir, "StatusHD_Photo.mp4")
                 val cmd = "-y -loop 1 -framerate 30 -i \"${tempPng.absolutePath}\" " +
-                        "-t 5 " +
-                        "-c:v libx264 -preset medium -tune stillimage " +
+                        "-t 5 -c:v libx264 -preset medium -tune stillimage " +
                         "-profile:v high -level 4.2 -pix_fmt yuv420p " +
                         "-crf 15 -maxrate 6000k -bufsize 12000k " +
                         "-movflags +faststart " +
@@ -325,16 +326,16 @@ class MainActivity : AppCompatActivity() {
                     if (ReturnCode.isSuccess(session.returnCode) && outFile.exists() && outFile.length() > 0) {
                         outputFiles.add(outFile)
                         progressBar.progress = 100
-                        tvStatusLog.text = "System: Photo Stream Ready. Bye bye blur!"
+                        tvStatusLog.text = "Selesai! Foto HD+ (${pW}x${pH}) siap dikirim ke WA."
                         btnShareWa.isEnabled = true
                     } else {
-                        tvStatusLog.text = "Error: Failed to encode stream."
+                        tvStatusLog.text = "Gagal merender Foto HD+: ${session.failStackTrace}"
                     }
                     btnProcess.isEnabled = true
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
-                    tvStatusLog.text = "Error: ${e.message}"
+                    tvStatusLog.text = "Gagal memproses foto: ${e.message}"
                     btnProcess.isEnabled = true
                 }
             }
@@ -366,7 +367,7 @@ class MainActivity : AppCompatActivity() {
             startActivity(intent)
         } catch (e: Exception) {
             intent.setPackage(null)
-            startActivity(Intent.createChooser(intent, "Send to Status WA"))
+            startActivity(Intent.createChooser(intent, "Kirim ke Status WhatsApp"))
         }
     }
 
