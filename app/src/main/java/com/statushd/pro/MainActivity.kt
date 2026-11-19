@@ -113,6 +113,7 @@ class MainActivity : AppCompatActivity() {
         val maxSide = maxOf(rotatedW, rotatedH)
         val minSide = minOf(rotatedW, rotatedH)
 
+        // Native 1:1 Pixel Mapping (Sama persis dengan Versi 5 yang sangat tajam)
         val scale = if (maxSide > 1920 || minSide > 1080) {
             minOf(1920f / maxSide.toFloat(), 1080f / minSide.toFloat())
         } else {
@@ -126,7 +127,8 @@ class MainActivity : AppCompatActivity() {
 
         val interval = 30
         val effectiveClipSec = minOf(max(1, videoDurationSec), interval)
-        // Kombinasi Bitrate Sakti (3500 - 7500 Kbps)
+        
+        // RESTORASI BATAS BAWAH BITRATE (3500k) AGAR CRF-15 TIDAK MATI KUTU!
         val bitrateKbps = ((9.5 * 8192.0) / effectiveClipSec - 128.0).toInt().coerceIn(3500, 7500)
 
         return VideoPlan(targetW, targetH, transposeStr, rotDesc, bitrateKbps)
@@ -162,13 +164,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateVideoSplitPreview() {
-        val totalParts = ceil(videoDurationSec.toDouble() / 30.0).toInt()
+        val interval = getSplitInterval()
+        val totalParts = ceil(videoDurationSec.toDouble() / interval.toDouble()).toInt()
         val plan = buildVideoPlan()
         
         tvMediaInfo.text = "> SONYBAE DEFINITIVE ENGINE (VIDEO)\n" +
                 "> Source: ${origDisplayW}x${origDisplayH} | ${videoDurationSec}s | ${savedOriginalSizeKb} KB\n" +
                 "> Target: ${plan.outW}x${plan.outH} (BRAVO HD ENGINE V1)\n" +
-                "> Config: ${plan.rotateDesc} | Parts: $totalParts (@30s)"
+                "> Rotasi: ${plan.rotateDesc} | Parts: $totalParts (@${interval}s)"
     }
 
     private fun analyzePhoto(uri: Uri) {
@@ -205,18 +208,18 @@ class MainActivity : AppCompatActivity() {
         btnProcess.isEnabled = false
         btnShareWa.isEnabled = false
         progressBar.progress = 2
-        tvStatusLog.text = "Injecting BRAVO HD Engine (Anti-Compression)..."
+        tvStatusLog.text = "Merender Video True Native HD+..."
 
         scope.launch(Dispatchers.IO) {
             val outDir = prepareOutputDir()
             val safeInputPath = FFmpegKitConfig.getSafParameterForRead(this@MainActivity, uri)
+            val interval = getSplitInterval()
             val outputPattern = File(outDir, "StatusHD_Part_%03d.mp4").absolutePath
 
             val plan = buildVideoPlan()
-            val interval = 30
-            val gopFrames = 30 * interval
-            
-            // Rangkaian Filter: Rotasi (jika aktif) + Resolusi Presisi Tanpa Unsharp Berlebihan
+            val gopFrames = 30 * minOf(videoDurationSec, interval)
+
+            // Rangkai filter: rotasi (jika aktif) + resolusi presisi tanpa unsharp berlebihan yang memicu halo/blur
             val filters = ArrayList<String>()
             if (plan.transposeFilter != null) {
                 filters.add(plan.transposeFilter)
@@ -234,14 +237,14 @@ class MainActivity : AppCompatActivity() {
                 }
             }
 
-            // Kode Sakti Bravo HD (High Profile, Level 4.2, CRF 15, Tanpa Flag Yang Ditolak Driver GPU Android)
+            // Gunakan CRF 19 + deblock -1:-1 agar detail piksel asli tetap tajam alami tanpa artefak over-sharpening
             val cmd = "-y -i \"$safeInputPath\" " +
-                    "-vf \"$vfFilter\" " +
+                    "-vf \"$vfChain\" " +
                     "-r 30 -g $gopFrames " +
-                    "-c:v libx264 -preset medium -profile:v high -level 4.2 -threads 8 " +
-                    "-crf 15 -maxrate ${plan.bitrateKbps}k -bufsize ${plan.bitrateKbps * 2}k " +
-                    "-bf 3 -refs 4 -aq-mode 3 " +
-                    "-c:a aac -b:a 192k -ar 48000 -ac 2 " +
+                    "-c:v libx264 -preset fast -profile:v high -level 4.1 -threads 8 " +
+                    "-crf 19 -maxrate ${plan.bitrateKbps}k -bufsize ${plan.bitrateKbps * 2}k " +
+                    "-bf 2 -deblock -1:-1 " +
+                    "-c:a aac -b:a 128k -ar 44100 -ac 2 " +
                     "-f segment -segment_time $interval -reset_timestamps 1 " +
                     "\"$outputPattern\""
 
@@ -255,7 +258,7 @@ class MainActivity : AppCompatActivity() {
 
                     outputFiles.addAll(generated)
                     progressBar.progress = 100
-                    tvStatusLog.text = "Selesai! ${outputFiles.size} klip (${plan.outW}x${plan.outH}) siap dikirim ke WA!"
+                    tvStatusLog.text = "Selesai! ${outputFiles.size} klip (${plan.outW}x${plan.outH}, ~${avgSizeMb(outputFiles)} MB/klip) siap dikirim ke WA!"
                     btnShareWa.isEnabled = outputFiles.isNotEmpty()
                 } else {
                     tvStatusLog.text = "Gagal memproses video: ${session.failStackTrace}"
@@ -278,33 +281,33 @@ class MainActivity : AppCompatActivity() {
                 val decodeOpts = BitmapFactory.Options().apply { inPreferredConfig = Bitmap.Config.ARGB_8888 }
                 var bitmap = contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, decodeOpts) } ?: throw Exception("Foto tidak terbaca")
 
-                val rot = contentResolver.openInputStream(uri)?.use { input ->
-                    when (ExifInterface(input).getAttributeInt(ExifInterface.TAG_ORIENTATION, 1)) {
-                        6 -> 90f; 3 -> 180f; 8 -> 270f; else -> 0f
+                val rotationDegrees = contentResolver.openInputStream(uri)?.use { input ->
+                    val exif = ExifInterface(input)
+                    when (exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)) {
+                        ExifInterface.ORIENTATION_ROTATE_90 -> 90f
+                        ExifInterface.ORIENTATION_ROTATE_180 -> 180f
+                        ExifInterface.ORIENTATION_ROTATE_270 -> 270f
+                        else -> 0f
                     }
                 } ?: 0f
 
                 if (rot != 0f) {
                     val mat = Matrix().apply { postRotate(rot) }
-                    val rotBmp = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, mat, true)
-                    if (rotBmp != bitmap) {
-                        bitmap.recycle()
-                        bitmap = rotBmp
-                    }
+                    val rotated = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, mat, true)
+                    if (rotated != bitmap) bitmap.recycle()
+                    bitmap = rotated
                 }
 
-                val scale = minOf(1920f / maxOf(bitmap.width, bitmap.height).toFloat(), 1080f / minOf(bitmap.width, bitmap.height).toFloat()).coerceAtMost(1.0f)
-                var pW = (bitmap.width * scale).toInt()
-                var pH = (bitmap.height * scale).toInt()
-                if (pW % 2 != 0) pW++
-                if (pH % 2 != 0) pH++
-
-                val scaled = Bitmap.createScaledBitmap(bitmap, pW, pH, true)
-                if (scaled != bitmap) bitmap.recycle()
+                val maxSide = maxOf(bitmap.width, bitmap.height)
+                val scale = 1920f / maxSide.toFloat()
+                var targetW = (bitmap.width * scale).toInt()
+                var targetH = (bitmap.height * scale).toInt()
+                if (targetW % 2 != 0) targetW++
+                if (targetH % 2 != 0) targetH++
 
                 val tempPng = File(cacheDir, "hd_frame.png")
-                FileOutputStream(tempPng).use { scaled.compress(Bitmap.CompressFormat.PNG, 100, it) }
-                scaled.recycle()
+                FileOutputStream(tempPng).use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                bitmap.recycle()
 
                 runOnUiThread {
                     progressBar.progress = 60
@@ -316,7 +319,6 @@ class MainActivity : AppCompatActivity() {
                         "-t 5 -c:v libx264 -preset medium -tune stillimage " +
                         "-profile:v high -level 4.2 -pix_fmt yuv420p " +
                         "-crf 15 -maxrate 6000k -bufsize 12000k " +
-                        "-movflags +faststart " +
                         "\"${outFile.absolutePath}\""
 
                 val session = FFmpegKit.execute(cmd)
@@ -367,7 +369,7 @@ class MainActivity : AppCompatActivity() {
             startActivity(intent)
         } catch (e: Exception) {
             intent.setPackage(null)
-            startActivity(Intent.createChooser(intent, "Kirim ke Status WhatsApp"))
+            startActivity(Intent.createChooser(intent, "Send to Status WA"))
         }
     }
 
