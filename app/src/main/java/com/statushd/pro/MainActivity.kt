@@ -119,7 +119,7 @@ class MainActivity : AppCompatActivity() {
         
         tvMediaInfo.text = "> SONYBAE DEFINITIVE ENGINE (VIDEO)\n" +
                 "> Source: ${origDisplayW}x${origDisplayH} | ${videoDurationSec}s | ${savedOriginalSizeKb} KB\n" +
-                "> Target: Strict 720p Bounding Box (Anti-Downscale)\n" +
+                "> Target: True Native High Profile (Restored to V1.0)\n" +
                 "> Config: $rotInfo | Parts: $totalParts (@30s)"
     }
 
@@ -135,7 +135,7 @@ class MainActivity : AppCompatActivity() {
             
             tvMediaInfo.text = "> SONYBAE DEFINITIVE ENGINE (PHOTO)\n" +
                     "> Source: ${origDisplayW}x${origDisplayH} | ${savedOriginalSizeKb} KB\n" +
-                    "> Target: Native JPEG 1600px Max (Zero Blur)\n" +
+                    "> Target: MP4 Stream 5s Container (Zero Zoompan)\n" +
                     "> Action: Direct WA Photo Bypass Injector"
             progressBar.progress = 0
             tvStatusLog.text = "System: Photo Loaded. Ready for Build."
@@ -157,7 +157,7 @@ class MainActivity : AppCompatActivity() {
         btnProcess.isEnabled = false
         btnShareWa.isEnabled = false
         progressBar.progress = 2
-        tvStatusLog.text = "Injecting Anti-Compression Algorithm..."
+        tvStatusLog.text = "Injecting High-Profile Anti-Compression..."
 
         scope.launch(Dispatchers.IO) {
             val outDir = prepareOutputDir()
@@ -167,24 +167,48 @@ class MainActivity : AppCompatActivity() {
             val isHorizontal = origDisplayW > origDisplayH
             val transpose = if (rbRotateAuto.isChecked && isHorizontal) "transpose=1," else ""
             
-            val vfFilter = "${transpose}scale='if(gt(iw,ih),min(1280,iw),-2)':'if(gt(iw,ih),-2,min(1280,ih))':flags=lanczos,unsharp=3:3:0.3:3:3:0.0,format=yuv420p"
+            // Perhitungan rotasi & skala dimensi murni untuk mempertahankan kualitas Native
+            val rotatedW = if (rbRotateAuto.isChecked && isHorizontal) origDisplayH else origDisplayW
+            val rotatedH = if (rbRotateAuto.isChecked && isHorizontal) origDisplayW else origDisplayH
+            val maxSide = maxOf(rotatedW, rotatedH)
+            val minSide = minOf(rotatedW, rotatedH)
+            
+            val scale = if (maxSide > 1920 || minSide > 1080) {
+                minOf(1920f / maxSide.toFloat(), 1080f / minSide.toFloat())
+            } else { 1.0f }
+            
+            var tW = ((rotatedW * scale).toInt() / 2) * 2
+            var tH = ((rotatedH * scale).toInt() / 2) * 2
+            if (tW < 2) tW = 720
+            if (tH < 2) tH = 1280
+
+            val interval = 30
+            val effectiveClipSec = minOf(max(1, videoDurationSec), interval)
+            
+            // Kunci pada 9.5 MB untuk memaksimalkan alokasi bitrate
+            val bitrateKbps = ((9.5 * 8192.0) / effectiveClipSec - 128.0).toInt().coerceIn(2500, 7500)
+            
+            val vfFilter = "${transpose}scale=${tW}:${tH}:flags=lanczos,format=yuv420p"
 
             FFmpegKitConfig.enableStatisticsCallback { stats: Statistics ->
                 val timeSec = (stats.time / 1000.0).toInt()
                 val pct = if (videoDurationSec > 0) ((timeSec * 100) / videoDurationSec).coerceIn(2, 99) else 50
                 runOnUiThread {
                     progressBar.progress = pct
-                    tvStatusLog.text = "Bypassing Server: $pct% (${timeSec}s / ${videoDurationSec}s)"
+                    tvStatusLog.text = "Encoding Native HD: $pct% (${timeSec}s / ${videoDurationSec}s)"
                 }
             }
 
+            // KODE SAKTI DIKEMBALIKAN (100% SAMA DENGAN VERSI BRAVO HD)
+            // Preset medium, Profile High, Level 4.2, CRF 15, bf 3, refs 4, aq-mode 3
             val cmd = "-y -i \"$safeInputPath\" " +
                     "-vf \"$vfFilter\" " +
-                    "-r 30 -g 90 " +
-                    "-c:v libx264 -preset fast -profile:v baseline -level 3.0 -threads 8 " +
-                    "-crf 17 -maxrate 2600k -bufsize 5000k " +
-                    "-c:a aac -b:a 128k -ar 44100 -ac 2 " +
-                    "-f segment -segment_time 30 -reset_timestamps 1 " +
+                    "-r 30 -g ${30 * interval} " +
+                    "-c:v libx264 -preset medium -profile:v high -level 4.2 -threads 8 " +
+                    "-crf 15 -maxrate ${bitrateKbps}k -bufsize ${bitrateKbps * 2}k " +
+                    "-bf 3 -refs 4 -aq-mode 3 " +
+                    "-c:a aac -b:a 192k -ar 48000 -ac 2 " +
+                    "-f segment -segment_time $interval -reset_timestamps 1 " +
                     "-segment_format_options movflags=+faststart " +
                     "\"$outputPattern\""
 
@@ -212,75 +236,65 @@ class MainActivity : AppCompatActivity() {
         btnProcess.isEnabled = false
         btnShareWa.isEnabled = false
         progressBar.progress = 25
-        tvStatusLog.text = "Processing Pure Native JPEG (Anti-Blur)..."
+        tvStatusLog.text = "Building Static MP4 Stream..."
 
         scope.launch(Dispatchers.IO) {
             try {
                 val outDir = prepareOutputDir()
                 
-                // Decode gambar asli
                 val decodeOpts = BitmapFactory.Options().apply { inPreferredConfig = Bitmap.Config.ARGB_8888 }
                 var bitmap = contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, decodeOpts) } ?: throw Exception("Image decode error")
 
-                // Cek rotasi EXIF dari gambar asli
                 val rot = contentResolver.openInputStream(uri)?.use { input ->
                     when (ExifInterface(input).getAttributeInt(ExifInterface.TAG_ORIENTATION, 1)) {
                         6 -> 90f; 3 -> 180f; 8 -> 270f; else -> 0f
                     }
                 } ?: 0f
 
-                // Putar gambar jika orientasinya salah
                 if (rot != 0f) {
                     val mat = Matrix().apply { postRotate(rot) }
                     val rotBmp = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, mat, true)
-                    if (rotBmp != bitmap) {
-                        bitmap.recycle()
-                        bitmap = rotBmp
-                    }
+                    if (rotBmp != bitmap) { bitmap.recycle(); bitmap = rotBmp }
                 }
+
+                // Kunci maksimal layar 1080x1920 agar MP4 optimal
+                val scalePhoto = minOf(1920f / maxOf(bitmap.width, bitmap.height).toFloat(), 1080f / minOf(bitmap.width, bitmap.height).toFloat()).coerceAtMost(1.0f)
+                var pW = (bitmap.width * scalePhoto).toInt()
+                var pH = (bitmap.height * scalePhoto).toInt()
+                if (pW % 2 != 0) pW++
+                if (pH % 2 != 0) pH++
+
+                val tempPng = File(cacheDir, "hd_frame.png")
+                val scaledBmp = Bitmap.createScaledBitmap(bitmap, pW, pH, true)
+                FileOutputStream(tempPng).use { scaledBmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                scaledBmp.recycle()
+                if (bitmap != scaledBmp) bitmap.recycle()
 
                 runOnUiThread {
-                    progressBar.progress = 50
-                    tvStatusLog.text = "Rescaling to WA Sweet Spot (Max 1600px)..."
+                    progressBar.progress = 60
+                    tvStatusLog.text = "Encoding Static MP4 (Zero Zoompan)..."
                 }
 
-                // WhatsApp membatasi gambar maksimal 1600px pada sisi terpanjang tanpa kompresi kasar.
-                // Jika gambar lebih besar dari 1600px, kita kecilkan dengan mulus (Bilinear).
-                val maxSide = maxOf(bitmap.width, bitmap.height)
-                val targetMax = 1600f
-                if (maxSide > targetMax) {
-                    val scale = targetMax / maxSide
-                    val tW = (bitmap.width * scale).toInt()
-                    val tH = (bitmap.height * scale).toInt()
-                    
-                    val scaled = Bitmap.createScaledBitmap(bitmap, tW, tH, true)
-                    if (scaled != bitmap) {
-                        bitmap.recycle()
-                        bitmap = scaled
-                    }
-                }
+                // DIBUAT VIDEO STATIS MURNI, TANPA ZOOMPAN
+                val outFile = File(outDir, "StatusHD_Photo.mp4")
+                val cmd = "-y -loop 1 -framerate 30 -i \"${tempPng.absolutePath}\" " +
+                        "-t 5 -c:v libx264 -preset medium -tune stillimage " +
+                        "-profile:v high -level 4.2 -pix_fmt yuv420p " +
+                        "-crf 14 -b:v 8000k -maxrate 10000k -bufsize 20000k " +
+                        "-movflags +faststart " +
+                        "\"${outFile.absolutePath}\""
 
-                runOnUiThread {
-                    progressBar.progress = 80
-                    tvStatusLog.text = "Saving JPEG at Maximum Quality (100%)..."
-                }
-
-                // Simpan sebagai file JPEG murni dengan kualitas 100% (tidak dikompres, Lossless-like)
-                val outFile = File(outDir, "StatusHD_Photo.jpg")
-                FileOutputStream(outFile).use { fos ->
-                    bitmap.compress(Bitmap.CompressFormat.JPEG, 100, fos)
-                }
-                bitmap.recycle()
+                val session = FFmpegKit.execute(cmd)
+                tempPng.delete()
 
                 withContext(Dispatchers.Main) {
-                    if (outFile.exists() && outFile.length() > 0) {
+                    if (ReturnCode.isSuccess(session.returnCode) && outFile.exists() && outFile.length() > 0) {
                         outputFiles.add(outFile)
                         progressBar.progress = 100
-                        val sizeKb = outFile.length() / 1024
-                        tvStatusLog.text = "System: Pure Photo Ready (${sizeKb} KB). Zero Blur Guaranteed."
+                        tvStatusLog.text = "System: Photo Stream Ready. Zero Blur Guaranteed."
                         btnShareWa.isEnabled = true
                     } else {
-                        tvStatusLog.text = "Error: Failed to save photo."
+                        tvStatusLog.text = "Error: Failed to encode stream."
                     }
                     btnProcess.isEnabled = true
                 }
@@ -297,8 +311,7 @@ class MainActivity : AppCompatActivity() {
         if (outputFiles.isEmpty()) return
         val uris = outputFiles.map { FileProvider.getUriForFile(this, "${packageName}.provider", it) }
         
-        // Bedakan MIME type berdasarkan file yang diproses (video atau foto)
-        val mimeType = if (isVideoMode) "video/mp4" else "image/jpeg"
+        val mimeType = "video/mp4" // Video dan Foto murni dikirim sebagai video/mp4 ke WA
         
         val intent = if (uris.size == 1) {
             Intent(Intent.ACTION_SEND).apply { 
