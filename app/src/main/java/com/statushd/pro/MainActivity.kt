@@ -135,7 +135,7 @@ class MainActivity : AppCompatActivity() {
             
             tvMediaInfo.text = "> SONYBAE DEFINITIVE ENGINE (PHOTO)\n" +
                     "> Source: ${origDisplayW}x${origDisplayH} | ${savedOriginalSizeKb} KB\n" +
-                    "> Target: Native JPEG 1600px Max (Zero Blur)\n" +
+                    "> Target: MP4 Stream 5s Container (PlayStore Method)\n" +
                     "> Action: Direct WA Photo Bypass Injector"
             progressBar.progress = 0
             tvStatusLog.text = "System: Photo Loaded. Ready for Build."
@@ -232,7 +232,7 @@ class MainActivity : AppCompatActivity() {
         btnProcess.isEnabled = false
         btnShareWa.isEnabled = false
         progressBar.progress = 25
-        tvStatusLog.text = "Processing Pure Native JPEG (Anti-Blur)..."
+        tvStatusLog.text = "Building Static MP4 Stream..."
 
         scope.launch(Dispatchers.IO) {
             try {
@@ -256,45 +256,43 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
 
-                runOnUiThread {
-                    progressBar.progress = 50
-                    tvStatusLog.text = "Rescaling to WA Sweet Spot (Max 1600px)..."
-                }
+                val scale = minOf(1920f / maxOf(bitmap.width, bitmap.height).toFloat(), 1080f / minOf(bitmap.width, bitmap.height).toFloat()).coerceAtMost(1.0f)
+                var pW = (bitmap.width * scale).toInt()
+                var pH = (bitmap.height * scale).toInt()
+                if (pW % 2 != 0) pW++
+                if (pH % 2 != 0) pH++
 
-                val maxSide = maxOf(bitmap.width, bitmap.height)
-                val targetMax = 1600f
-                if (maxSide > targetMax) {
-                    val scale = targetMax / maxSide
-                    val tW = (bitmap.width * scale).toInt()
-                    val tH = (bitmap.height * scale).toInt()
-                    
-                    val scaled = Bitmap.createScaledBitmap(bitmap, tW, tH, true)
-                    if (scaled != bitmap) {
-                        bitmap.recycle()
-                        bitmap = scaled
-                    }
-                }
+                val scaled = Bitmap.createScaledBitmap(bitmap, pW, pH, true)
+                if (scaled != bitmap) bitmap.recycle()
+
+                val tempPng = File(cacheDir, "hd_frame.png")
+                FileOutputStream(tempPng).use { scaled.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                scaled.recycle()
 
                 runOnUiThread {
-                    progressBar.progress = 80
-                    tvStatusLog.text = "Saving JPEG at Maximum Quality (100%)..."
+                    progressBar.progress = 60
+                    tvStatusLog.text = "Encoding Static MP4 Stream..."
                 }
 
-                val outFile = File(outDir, "StatusHD_Photo.jpg")
-                FileOutputStream(outFile).use { fos ->
-                    bitmap.compress(Bitmap.CompressFormat.JPEG, 100, fos)
-                }
-                bitmap.recycle()
+                val outFile = File(outDir, "StatusHD_Photo.mp4")
+                val cmd = "-y -loop 1 -framerate 30 -i \"${tempPng.absolutePath}\" " +
+                        "-t 5 -c:v libx264 -preset medium -tune stillimage " +
+                        "-profile:v high -level 4.2 -pix_fmt yuv420p " +
+                        "-crf 15 -maxrate 6000k -bufsize 12000k " +
+                        "-movflags +faststart " +
+                        "\"${outFile.absolutePath}\""
+
+                val session = FFmpegKit.execute(cmd)
+                tempPng.delete()
 
                 withContext(Dispatchers.Main) {
-                    if (outFile.exists() && outFile.length() > 0) {
+                    if (ReturnCode.isSuccess(session.returnCode) && outFile.exists() && outFile.length() > 0) {
                         outputFiles.add(outFile)
                         progressBar.progress = 100
-                        val sizeKb = outFile.length() / 1024
-                        tvStatusLog.text = "System: Pure Photo Ready (${sizeKb} KB). Zero Blur Guaranteed."
+                        tvStatusLog.text = "System: Photo Stream Ready. Zero Blur Guaranteed."
                         btnShareWa.isEnabled = true
                     } else {
-                        tvStatusLog.text = "Error: Failed to save photo."
+                        tvStatusLog.text = "Error: Failed to encode stream."
                     }
                     btnProcess.isEnabled = true
                 }
@@ -311,7 +309,7 @@ class MainActivity : AppCompatActivity() {
         if (outputFiles.isEmpty()) return
         val uris = outputFiles.map { FileProvider.getUriForFile(this, "${packageName}.provider", it) }
         
-        val mimeType = if (isVideoMode) "video/mp4" else "image/jpeg"
+        val mimeType = "video/mp4"
         
         val intent = if (uris.size == 1) {
             Intent(Intent.ACTION_SEND).apply { 
