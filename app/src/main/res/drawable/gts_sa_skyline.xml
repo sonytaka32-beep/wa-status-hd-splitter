@@ -5,17 +5,14 @@
     android:viewportWidth="800"
     android:viewportHeight="400">
 
-    <!-- Langit Senja Los Santos (Amber ke Hijau Gelap) -->
-    <path android:fillColor="#090A08" android:pathData="M0,0 h800 v400 h-800 z" />
-    <path android:fillColor="#1F2417" android:pathData="M0,200 h800 v200 h-800 z" />
-    <path android:fillColor="#3A4026" android:pathData="M0,300 h800 v100 h-800 z" />
+    <!-- Siluet Kota Berlapis (San Fierro Vibe) -->
+    <!-- Lapis Belakang -->
+    <path android:fillColor="#819C70" android:pathData="M0,400 L0,200 L60,200 L60,240 L130,240 L130,120 L190,120 L190,180 L230,180 L230,220 L300,220 L300,90 L380,90 L380,180 L440,180 L440,110 L520,110 L520,240 L600,240 L600,160 L680,160 L680,260 L750,260 L750,190 L800,190 L800,400 Z" />
+    
+    <!-- Lapis Depan (Lebih Gelap) -->
+    <path android:fillColor="#6A8559" android:pathData="M0,400 L0,280 L40,280 L40,320 L100,320 L100,210 L160,210 L160,260 L210,260 L210,300 L280,300 L280,160 L360,160 L360,240 L420,240 L420,180 L500,180 L500,290 L580,290 L580,210 L660,210 L660,310 L730,310 L730,230 L800,230 L800,400 Z" />
+    
+    <!-- Detail Tiang Jembatan -->
+    <path android:strokeColor="#6A8559" android:strokeWidth="5" android:pathData="M320,160 L320,80 M540,210 L540,120 M130,210 L130,140" />
 
-    <!-- Siluet Gedung Pencakar Langit (Kota San Andreas) -->
-    <path android:fillColor="#000000" android:fillAlpha="0.8" android:pathData="M0,400 L0,250 L50,250 L50,300 L120,300 L120,180 L180,180 L180,150 L220,150 L220,280 L280,280 L280,100 L350,100 L350,320 L400,320 L400,200 L480,200 L480,130 L550,130 L550,260 L620,260 L620,190 L700,190 L700,280 L760,280 L760,220 L800,220 L800,400 Z" />
-    
-    <!-- Detail Tiang & Menara -->
-    <path android:strokeColor="#000000" android:strokeWidth="4" android:pathData="M315,100 L315,50 M515,130 L515,80 M150,180 L150,120" />
-    
-    <!-- Gradien Gelap Penutup Bawah -->
-    <path android:fillColor="#000000" android:fillAlpha="0.6" android:pathData="M0,350 h800 v50 h-800 z" />
 </vector>
