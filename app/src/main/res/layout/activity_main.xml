@@ -39,54 +39,53 @@
                     android:orientation="vertical"
                     android:layout_marginBottom="25dp">
 
-                        <!-- GRAND THEFT AUTO (Font Pricedown, Mentok Layar) -->
-                        <RelativeLayout
+                    <RelativeLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="-30dp">
+
+                        <TextView
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:layout_marginBottom="-30dp">
+                            android:fontFamily="@font/pricedown"
+                            android:text="GRAND\nTHEFT\nAUTO"
+                            android:textAlignment="center"
+                            android:textColor="#000000"
+                            android:textSize="90sp"
+                            android:lineSpacingMultiplier="0.75"
+                            android:shadowColor="#000000"
+                            android:shadowDx="-8" android:shadowDy="-8" android:shadowRadius="1" />
 
-                            <TextView
-                                android:layout_width="match_parent"
-                                android:layout_height="wrap_content"
-                                android:fontFamily="@font/pricedown"
-                                android:text="GRAND\nTHEFT\nAUTO"
-                                android:textAlignment="center"
-                                android:textColor="#000000"
-                                android:textSize="90sp"
-                                android:lineSpacingMultiplier="0.75"
-                                android:shadowColor="#000000"
-                                android:shadowDx="-8" android:shadowDy="-8" android:shadowRadius="1" />
-
-                            <TextView
-                                android:layout_width="match_parent"
-                                android:layout_height="wrap_content"
-                                android:fontFamily="@font/pricedown"
-                                android:text="GRAND\nTHEFT\nAUTO"
-                                android:textAlignment="center"
-                                android:textColor="#000000"
-                                android:textSize="90sp"
-                                android:lineSpacingMultiplier="0.75"
-                                android:shadowColor="#000000"
-                                android:shadowDx="8" android:shadowDy="8" android:shadowRadius="1" />
-
-                            <TextView
-                                android:layout_width="match_parent"
-                                android:layout_height="wrap_content"
-                                android:fontFamily="@font/pricedown"
-                                android:text="GRAND\nTHEFT\nAUTO"
-                                android:textAlignment="center"
-                                android:textColor="#FFFFFF"
-                                android:textSize="90sp"
-                                android:lineSpacingMultiplier="0.75" />
-                        </RelativeLayout>
-
-                        <!-- San Andreas (Font Diplomata, Outline Putih) -->
-                        <RelativeLayout
+                        <TextView
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:layout_marginTop="20dp"
-                            android:layout_marginBottom="16dp"
-                            android:rotation="-3">
+                            android:fontFamily="@font/pricedown"
+                            android:text="GRAND\nTHEFT\nAUTO"
+                            android:textAlignment="center"
+                            android:textColor="#000000"
+                            android:textSize="90sp"
+                            android:lineSpacingMultiplier="0.75"
+                            android:shadowColor="#000000"
+                            android:shadowDx="8" android:shadowDy="8" android:shadowRadius="1" />
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:fontFamily="@font/pricedown"
+                            android:text="GRAND\nTHEFT\nAUTO"
+                            android:textAlignment="center"
+                            android:textColor="#FFFFFF"
+                            android:textSize="90sp"
+                            android:lineSpacingMultiplier="0.75" />
+                    </RelativeLayout>
+
+                    <!-- San Andreas (Font Diplomata, Outline Putih) -->
+                    <RelativeLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="20dp"
+                        android:layout_marginBottom="16dp"
+                        android:rotation="-3">
 
                         <TextView
                             android:layout_width="match_parent"
@@ -118,217 +117,217 @@
                             android:textAlignment="center"
                             android:textColor="#000000"
                             android:textSize="60sp" />
-                        </RelativeLayout>
+                    </RelativeLayout>
 
-                        <!-- THE STATUS EDITION (Lebih Lebar dan Jelas) -->
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:background="#A67B48"
-                            android:paddingHorizontal="40dp"
-                            android:paddingVertical="10dp"
-                            android:fontFamily="sans-serif-black"
-                            android:letterSpacing="0.3"
-                            android:text="T H E  S T A T U S  E D I T I O N"
-                            android:textColor="#000000"
-                            android:textSize="14sp" />
-                    </LinearLayout>
+                    <!-- THE STATUS EDITION -->
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:background="#A67B48"
+                        android:paddingHorizontal="40dp"
+                        android:paddingVertical="10dp"
+                        android:fontFamily="sans-serif-black"
+                        android:letterSpacing="0.3"
+                        android:text="T H E  S T A T U S  E D I T I O N"
+                        android:textColor="#000000"
+                        android:textSize="14sp" />
+                </LinearLayout>
 
-                    <!-- KONTROL PANEL & TOMBOL-TOMBOL -->
-                    <!-- (Bagian Panel & Tombol Tidak Berubah, Tetap Stabil) -->
+                <!-- KONTROL PANEL & TOMBOL-TOMBOL -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="16dp"
+                    android:orientation="horizontal">
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnPickVideo"
+                        android:layout_width="0dp"
+                        android:layout_height="64dp"
+                        android:layout_marginEnd="6dp"
+                        android:layout_weight="1"
+                        android:backgroundTint="#000000"
+                        android:fontFamily="sans-serif-black"
+                        android:text="ADD VIDEO"
+                        android:textColor="#FFFFFF"
+                        app:cornerRadius="0dp" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnPickPhoto"
+                        android:layout_width="0dp"
+                        android:layout_height="64dp"
+                        android:layout_marginStart="6dp"
+                        android:layout_weight="1"
+                        android:backgroundTint="#FFFFFF"
+                        android:fontFamily="sans-serif-black"
+                        android:text="ADD PHOTO"
+                        android:textColor="#000000"
+                        app:cornerRadius="0dp" />
+                </LinearLayout>
+
+                <com.google.android.material.card.MaterialCardView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="16dp"
+                    app:cardBackgroundColor="#000000"
+                    app:cardCornerRadius="0dp"
+                    app:strokeColor="#FFFFFF"
+                    app:strokeWidth="2dp">
+
+                    <TextView
+                        android:id="@+id/tvMediaInfo"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:fontFamily="monospace"
+                        android:padding="16dp"
+                        android:text="[ NO MEDIA LOADED ]\nWaiting for input..."
+                        android:textColor="#FFFFFF"
+                        android:textSize="12sp" />
+                </com.google.android.material.card.MaterialCardView>
+
+                <com.google.android.material.card.MaterialCardView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="24dp"
+                    app:cardBackgroundColor="#000000"
+                    app:cardCornerRadius="0dp"
+                    app:strokeColor="#FFFFFF"
+                    app:strokeWidth="2dp">
+
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginBottom="16dp"
-                        android:orientation="horizontal">
-
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/btnPickVideo"
-                            android:layout_width="0dp"
-                            android:layout_height="64dp"
-                            android:layout_marginEnd="6dp"
-                            android:layout_weight="1"
-                            android:backgroundTint="#000000"
-                            android:fontFamily="sans-serif-black"
-                            android:text="ADD VIDEO"
-                            android:textColor="#FFFFFF"
-                            app:cornerRadius="0dp" />
-
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/btnPickPhoto"
-                            android:layout_width="0dp"
-                            android:layout_height="64dp"
-                            android:layout_marginStart="6dp"
-                            android:layout_weight="1"
-                            android:backgroundTint="#FFFFFF"
-                            android:fontFamily="sans-serif-black"
-                            android:text="ADD PHOTO"
-                            android:textColor="#000000"
-                            app:cornerRadius="0dp" />
-                    </LinearLayout>
-
-                    <com.google.android.material.card.MaterialCardView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginBottom="16dp"
-                        app:cardBackgroundColor="#000000"
-                        app:cardCornerRadius="0dp"
-                        app:strokeColor="#FFFFFF"
-                        app:strokeWidth="2dp">
+                        android:orientation="vertical"
+                        android:padding="16dp">
 
                         <TextView
-                            android:id="@+id/tvMediaInfo"
-                            android:layout_width="match_parent"
+                            android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:fontFamily="monospace"
-                            android:padding="16dp"
-                            android:text="[ NO MEDIA LOADED ]\nWaiting for input..."
-                            android:textColor="#FFFFFF"
+                            android:fontFamily="sans-serif-black"
+                            android:text="ROTATION OVERRIDE"
+                            android:textColor="#A67B48"
                             android:textSize="12sp" />
-                    </com.google.android.material.card.MaterialCardView>
 
-                    <com.google.android.material.card.MaterialCardView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginBottom="24dp"
-                        app:cardBackgroundColor="#000000"
-                        app:cardCornerRadius="0dp"
-                        app:strokeColor="#FFFFFF"
-                        app:strokeWidth="2dp">
-
-                        <LinearLayout
+                        <RadioGroup
+                            android:id="@+id/rgRotateMode"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:orientation="vertical"
-                            android:padding="16dp">
+                            android:layout_marginTop="8dp"
+                            android:orientation="vertical">
 
-                                <TextView
-                                    android:layout_width="wrap_content"
-                                    android:layout_height="wrap_content"
-                                    android:fontFamily="sans-serif-black"
-                                    android:text="ROTATION OVERRIDE"
-                                    android:textColor="#A67B48"
-                                    android:textSize="12sp" />
-
-                            <RadioGroup
-                                android:id="@+id/rgRotateMode"
-                                android:layout_width="match_parent"
+                            <!-- TOMBOL BARU: FORCE ROTATION -->
+                            <RadioButton
+                                android:id="@+id/rbRotate90"
+                                android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:layout_marginTop="8dp"
-                                android:orientation="vertical">
+                                android:checked="true"
+                                android:fontFamily="sans-serif-medium"
+                                android:text="Force Portrait (Putar Tegak 90°)"
+                                android:textColor="#FFFFFF" />
 
-                                <RadioButton
-                                    android:id="@+id/rbRotateAuto"
-                                    android:layout_width="wrap_content"
-                                    android:layout_height="wrap_content"
-                                    android:checked="true"
-                                    android:fontFamily="sans-serif-medium"
-                                    android:text="Auto Portrait (Bypass Gameplay)"
-                                    android:textColor="#FFFFFF" />
+                            <RadioButton
+                                android:id="@+id/rbKeepOriginal"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:fontFamily="sans-serif-medium"
+                                android:text="Keep Original (Biarkan Mendatar)"
+                                android:textColor="#FFFFFF" />
+                        </RadioGroup>
+                    </LinearLayout>
+                </com.google.android.material.card.MaterialCardView>
 
-                                <RadioButton
-                                    android:id="@+id/rbRotateNone"
-                                    android:layout_width="wrap_content"
-                                    android:layout_height="wrap_content"
-                                    android:fontFamily="sans-serif-medium"
-                                    android:text="Keep Original Aspect Ratio"
-                                    android:textColor="#FFFFFF" />
-                            </RadioGroup>
-                        </LinearLayout>
-                    </com.google.android.material.card.MaterialCardView>
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnProcess"
+                    android:layout_width="match_parent"
+                    android:layout_height="64dp"
+                    android:backgroundTint="#A67B48"
+                    android:enabled="false"
+                    android:fontFamily="sans-serif-black"
+                    android:letterSpacing="0.05"
+                    android:text="START BYPASS INJECTION"
+                    android:textColor="#000000"
+                    android:textSize="16sp"
+                    app:cornerRadius="0dp" />
 
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnProcess"
-                        android:layout_width="match_parent"
-                        android:layout_height="64dp"
-                        android:backgroundTint="#A67B48"
-                        android:enabled="false"
-                        android:fontFamily="sans-serif-black"
-                        android:letterSpacing="0.05"
-                        android:text="START BYPASS INJECTION"
-                        android:textColor="#000000"
-                        android:textSize="16sp"
-                        app:cornerRadius="0dp" />
+                <ProgressBar
+                    android:id="@+id/progressBar"
+                    style="?android:attr/progressBarStyleHorizontal"
+                    android:layout_width="match_parent"
+                    android:layout_height="6dp"
+                    android:layout_marginTop="16dp"
+                    android:max="100"
+                    android:progress="0"
+                    android:progressTint="#000000"
+                    android:progressBackgroundTint="#FFFFFF"/>
 
-                    <ProgressBar
-                        android:id="@+id/progressBar"
-                        style="?android:attr/progressBarStyleHorizontal"
-                        android:layout_width="match_parent"
-                        android:layout_height="6dp"
-                        android:layout_marginTop="16dp"
-                        android:max="100"
-                        android:progress="0"
-                        android:progressTint="#000000"
-                        android:progressBackgroundTint="#FFFFFF"/>
+                <TextView
+                    android:id="@+id/tvStatusLog"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:layout_marginBottom="24dp"
+                    android:fontFamily="monospace"
+                    android:text="System: Idle..."
+                    android:textColor="#000000"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnShareWa"
+                    android:layout_width="match_parent"
+                    android:layout_height="64dp"
+                    android:layout_marginBottom="32dp"
+                    android:backgroundTint="#000000"
+                    android:enabled="false"
+                    android:fontFamily="sans-serif-black"
+                    android:letterSpacing="0.05"
+                    android:text="SEND TO WHATSAPP"
+                    android:textColor="#FFFFFF"
+                    android:textSize="16sp"
+                    app:cornerRadius="0dp" />
+
+                <!-- WATERMARK SONY BAE -->
+                <RelativeLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="20dp">
 
                     <TextView
-                        android:id="@+id/tvStatusLog"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:layout_marginBottom="24dp"
-                        android:fontFamily="monospace"
-                        android:text="System: Idle..."
+                        android:fontFamily="@font/pricedown"
+                        android:text="SONY\nBAE"
+                        android:textAlignment="center"
                         android:textColor="#000000"
-                        android:textSize="12sp"
-                        android:textStyle="bold" />
+                        android:textSize="110sp"
+                        android:lineSpacingMultiplier="0.75"
+                        android:shadowColor="#000000"
+                        android:shadowDx="-8" android:shadowDy="-8" android:shadowRadius="1" />
 
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnShareWa"
-                        android:layout_width="match_parent"
-                        android:layout_height="64dp"
-                        android:layout_marginBottom="32dp"
-                        android:backgroundTint="#000000"
-                        android:enabled="false"
-                        android:fontFamily="sans-serif-black"
-                        android:letterSpacing="0.05"
-                        android:text="SEND TO WHATSAPP"
-                        android:textColor="#FFFFFF"
-                        android:textSize="16sp"
-                        app:cornerRadius="0dp" />
-
-                    <!-- WATERMARK SONY BAE (Font Pricedown, Mentok Layar Bawah) -->
-                    <RelativeLayout
+                    <TextView
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginBottom="20dp">
+                        android:fontFamily="@font/pricedown"
+                        android:text="SONY\nBAE"
+                        android:textAlignment="center"
+                        android:textColor="#000000"
+                        android:textSize="110sp"
+                        android:lineSpacingMultiplier="0.75"
+                        android:shadowColor="#000000"
+                        android:shadowDx="8" android:shadowDy="8" android:shadowRadius="1" />
 
-                        <TextView
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:fontFamily="@font/pricedown"
-                            android:text="SONY\nBAE"
-                            android:textAlignment="center"
-                            android:textColor="#000000"
-                            android:textSize="110sp"
-                            android:lineSpacingMultiplier="0.75"
-                            android:shadowColor="#000000"
-                            android:shadowDx="-8" android:shadowDy="-8" android:shadowRadius="1" />
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:fontFamily="@font/pricedown"
+                        android:text="SONY\nBAE"
+                        android:textAlignment="center"
+                        android:textColor="#FFFFFF"
+                        android:textSize="110sp"
+                        android:lineSpacingMultiplier="0.75" />
+                </RelativeLayout>
 
-                        <TextView
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:fontFamily="@font/pricedown"
-                            android:text="SONY\nBAE"
-                            android:textAlignment="center"
-                            android:textColor="#000000"
-                            android:textSize="110sp"
-                            android:lineSpacingMultiplier="0.75"
-                            android:shadowColor="#000000"
-                            android:shadowDx="8" android:shadowDy="8" android:shadowRadius="1" />
-
-                        <TextView
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:fontFamily="@font/pricedown"
-                            android:text="SONY\nBAE"
-                            android:textAlignment="center"
-                            android:textColor="#FFFFFF"
-                            android:textSize="110sp"
-                            android:lineSpacingMultiplier="0.75" />
-                    </RelativeLayout>
-
-                </LinearLayout>
-            </RelativeLayout>
-        </ScrollView>
+            </LinearLayout>
+        </RelativeLayout>
+    </ScrollView>
 </androidx.coordinatorlayout.widget.CoordinatorLayout>

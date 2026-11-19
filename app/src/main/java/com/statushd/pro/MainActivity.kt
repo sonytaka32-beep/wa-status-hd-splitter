@@ -31,7 +31,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnProcess: Button
     private lateinit var btnShareWa: Button
     private lateinit var rgRotateMode: RadioGroup
-    private lateinit var rbRotateAuto: RadioButton
+    private lateinit var rbRotate90: RadioButton // Diperbarui untuk tombol manual
+    private lateinit var rbKeepOriginal: RadioButton
 
     private var selectedUri: Uri? = null
     private var isVideoMode: Boolean = true
@@ -43,7 +44,6 @@ class MainActivity : AppCompatActivity() {
     private val outputFiles = ArrayList<File>()
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
-    // Struktur Data Kalkulasi Video
     data class VideoPlan(
         val outW: Int,
         val outH: Int,
@@ -70,7 +70,8 @@ class MainActivity : AppCompatActivity() {
         btnProcess = findViewById(R.id.btnProcess)
         btnShareWa = findViewById(R.id.btnShareWa)
         rgRotateMode = findViewById(R.id.rgRotateMode)
-        rbRotateAuto = findViewById(R.id.rbRotateAuto)
+        rbRotate90 = findViewById(R.id.rbRotate90)
+        rbKeepOriginal = findViewById(R.id.rbKeepOriginal)
 
         findViewById<Button>(R.id.btnPickVideo).setOnClickListener { pickVideoLauncher.launch("video/*") }
         findViewById<Button>(R.id.btnPickPhoto).setOnClickListener { pickPhotoLauncher.launch("image/*") }
@@ -94,23 +95,26 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun buildVideoPlan(): VideoPlan {
-        val isHorizontal = origDisplayW > origDisplayH
-        
         var transposeStr = ""
         var rotDesc = "Original"
         var rotatedW = origDisplayW
         var rotatedH = origDisplayH
 
-        if (rbRotateAuto.isChecked && isHorizontal) {
-            transposeStr = "transpose=1,"
-            rotDesc = "Auto Portrait (Rotated 90°)"
-            rotatedW = origDisplayH
-            rotatedH = origDisplayW
+        // LOGIKA ROTASI MANUAL (Berdasarkan Tombol)
+        // Tidak lagi menebak-nebak rasio asli, jika kamu pencet "Force Portrait", dia akan memutarnya.
+        if (rbRotate90.isChecked) {
+            transposeStr = "transpose=1," // Putar searah jarum jam
+            rotDesc = "Force Portrait (Rotated 90°)"
+            // Putar dimensi matematiknya
+            val tempW = rotatedW
+            rotatedW = rotatedH
+            rotatedH = tempW
         }
 
         val maxSide = maxOf(rotatedW, rotatedH)
         val minSide = minOf(rotatedW, rotatedH)
 
+        // Native 1:1 Pixel Mapping (Bravo HD)
         val scale = if (maxSide > 1920 || minSide > 1080) {
             minOf(1920f / maxSide.toFloat(), 1080f / minSide.toFloat())
         } else {
@@ -225,7 +229,7 @@ class MainActivity : AppCompatActivity() {
                 }
             }
 
-            // KODE SAKTI BRAVO HD (High Profile, Level 4.2, CRF 15, Bitrate Max 7500k)
+            // KODE SAKTI BRAVO HD
             val cmd = "-y -i \"$safeInputPath\" " +
                     "-vf \"$vfFilter\" " +
                     "-r 30 -g $gopFrames " +
@@ -302,6 +306,7 @@ class MainActivity : AppCompatActivity() {
                     tvStatusLog.text = "Encoding Stream MP4 Tanpa Zoompan..."
                 }
 
+                // ENGINE FOTO: MP4 Statis 5 Detik MURNI
                 val outFile = File(outDir, "StatusHD_Photo.mp4")
                 val cmd = "-y -loop 1 -framerate 30 -i \"${tempPng.absolutePath}\" " +
                         "-t 5 " +
