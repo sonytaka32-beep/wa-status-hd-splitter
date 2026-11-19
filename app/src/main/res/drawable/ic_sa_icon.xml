@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Background Hitam -->
+    <path android:fillColor="#000000" android:pathData="M0,0 h108 v108 h-108 z" />
+    
+    <!-- Kotak Garis Putih -->
+    <path android:strokeColor="#FFFFFF" android:strokeWidth="4" android:pathData="M14,14 h80 v80 h-80 z" />
+    
+    <!-- Huruf S -->
+    <path android:fillColor="#FFFFFF" android:pathData="M48,34 L32,34 L26,42 L26,56 L32,60 L44,60 L44,70 L26,70 L26,78 L48,78 L54,70 L54,56 L48,52 L36,52 L36,42 L48,42 Z" />
+    
+    <!-- Huruf A -->
+    <path android:fillColor="#FFFFFF" android:pathData="M64,34 L76,34 L86,78 L76,78 L74,68 L66,68 L64,78 L54,78 Z M68,58 L72,58 L70,46 Z" />
+</vector>

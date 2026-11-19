@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="800dp"
+    android:height="1200dp"
+    android:viewportWidth="800"
+    android:viewportHeight="1200">
+    <!-- Solid Grove Street Green (Warna langit/latar khas poster GTA SA) -->
+    <path android:fillColor="#95B183" android:pathData="M0,0 h800 v1200 h-800 z" />
+</vector>
