@@ -43,6 +43,16 @@ class MainActivity : AppCompatActivity() {
     private val outputFiles = ArrayList<File>()
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
+    data class VideoPlan(
+        val outW: Int,
+        val outH: Int,
+        val transposeFilter: String?,
+        val rotateDesc: String,
+        val bitrateKbps: Int
+    )
+
+    private data class Quadruple<A, B, C, D>(val first: A, val second: B, val third: C, val fourth: D)
+
     private val pickVideoLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         uri?.let { selectedUri = it; isVideoMode = true; analyzeVideo(it) }
     }
@@ -115,12 +125,12 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateVideoSplitPreview() {
         val totalParts = ceil(videoDurationSec.toDouble() / 30.0).toInt()
-        val rotInfo = if (rbRotateAuto.isChecked && origDisplayW > origDisplayH) "Auto-Rotate to Portrait" else "Keep Original"
+        val plan = buildVideoPlan()
         
         tvMediaInfo.text = "> SONYBAE DEFINITIVE ENGINE (VIDEO)\n" +
                 "> Source: ${origDisplayW}x${origDisplayH} | ${videoDurationSec}s | ${savedOriginalSizeKb} KB\n" +
-                "> Target: True Native High Profile (Restored to BRAVO HD)\n" +
-                "> Config: $rotInfo | Parts: $totalParts (@30s)"
+                "> Target: ${plan.outW}x${plan.outH} (BRAVO HD ENGINE V1)\n" +
+                "> Config: ${plan.rotateDesc} | Parts: $totalParts (@30s)"
     }
 
     private fun analyzePhoto(uri: Uri) {
@@ -135,7 +145,7 @@ class MainActivity : AppCompatActivity() {
             
             tvMediaInfo.text = "> SONYBAE DEFINITIVE ENGINE (PHOTO)\n" +
                     "> Source: ${origDisplayW}x${origDisplayH} | ${savedOriginalSizeKb} KB\n" +
-                    "> Target: MP4 Stream 5s Container (PlayStore Method)\n" +
+                    "> Target: MP4 Stream 5s Container (Zero Zoompan)\n" +
                     "> Action: Direct WA Photo Bypass Injector"
             progressBar.progress = 0
             tvStatusLog.text = "System: Photo Loaded. Ready for Build."
@@ -164,29 +174,14 @@ class MainActivity : AppCompatActivity() {
             val safeInputPath = FFmpegKitConfig.getSafParameterForRead(this@MainActivity, uri)
             val outputPattern = File(outDir, "StatusHD_Part_%03d.mp4").absolutePath
 
-            val isHorizontal = origDisplayW > origDisplayH
-            val transpose = if (rbRotateAuto.isChecked && isHorizontal) "transpose=1," else ""
+            val plan = buildVideoPlan()
+            val gopFrames = 30 * minOf(videoDurationSec, 30)
             
-            val rotatedW = if (rbRotateAuto.isChecked && isHorizontal) origDisplayH else origDisplayW
-            val rotatedH = if (rbRotateAuto.isChecked && isHorizontal) origDisplayW else origDisplayH
-            val maxSide = maxOf(rotatedW, rotatedH)
-            val minSide = minOf(rotatedW, rotatedH)
-            
-            val scale = if (maxSide > 1920 || minSide > 1080) {
-                minOf(1920f / maxSide.toFloat(), 1080f / minSide.toFloat())
-            } else { 1.0f }
-            
-            var tW = ((rotatedW * scale).toInt() / 2) * 2
-            var tH = ((rotatedH * scale).toInt() / 2) * 2
-            if (tW < 2) tW = 720
-            if (tH < 2) tH = 1280
-
-            val interval = 30
-            val effectiveClipSec = minOf(max(1, videoDurationSec), interval)
-            
-            val bitrateKbps = ((9.5 * 8192.0) / effectiveClipSec - 128.0).toInt().coerceIn(2500, 7500)
-            
-            val vfFilter = "${transpose}scale=${tW}:${tH}:flags=lanczos,format=yuv420p"
+            val filters = ArrayList<String>()
+            if (plan.transposeFilter != null) filters.add(plan.transposeFilter)
+            filters.add("scale=${plan.outW}:${plan.outH}:flags=lanczos")
+            filters.add("format=yuv420p")
+            val vfChain = filters.joinToString(",")
 
             FFmpegKitConfig.enableStatisticsCallback { stats: Statistics ->
                 val timeSec = (stats.time / 1000.0).toInt()
@@ -198,14 +193,13 @@ class MainActivity : AppCompatActivity() {
             }
 
             val cmd = "-y -i \"$safeInputPath\" " +
-                    "-vf \"$vfFilter\" " +
-                    "-r 30 -g ${30 * interval} " +
+                    "-vf \"$vfChain\" " +
+                    "-r 30 -g $gopFrames " +
                     "-c:v libx264 -preset medium -profile:v high -level 4.2 -threads 8 " +
-                    "-crf 15 -maxrate ${bitrateKbps}k -bufsize ${bitrateKbps * 2}k " +
+                    "-crf 15 -maxrate ${plan.bitrateKbps}k -bufsize ${plan.bitrateKbps * 2}k " +
                     "-bf 3 -refs 4 -aq-mode 3 " +
                     "-c:a aac -b:a 192k -ar 48000 -ac 2 " +
-                    "-f segment -segment_time $interval -reset_timestamps 1 " +
-                    "-segment_format_options movflags=+faststart " +
+                    "-f segment -segment_time 30 -reset_timestamps 1 " +
                     "\"$outputPattern\""
 
             val session = FFmpegKit.execute(cmd)
@@ -232,7 +226,7 @@ class MainActivity : AppCompatActivity() {
         btnProcess.isEnabled = false
         btnShareWa.isEnabled = false
         progressBar.progress = 25
-        tvStatusLog.text = "Building Static MP4 Stream..."
+        tvStatusLog.text = "Building Static MP4 Stream Container..."
 
         scope.launch(Dispatchers.IO) {
             try {
