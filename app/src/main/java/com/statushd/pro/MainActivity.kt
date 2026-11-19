@@ -43,7 +43,6 @@ class MainActivity : AppCompatActivity() {
     private val outputFiles = ArrayList<File>()
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
-    // Struktur Data untuk Kalkulasi Resolusi Bravo HD
     data class VideoPlan(
         val outW: Int,
         val outH: Int,
@@ -107,11 +106,13 @@ class MainActivity : AppCompatActivity() {
         val maxSide = maxOf(rotatedW, rotatedH)
         val minSide = minOf(rotatedW, rotatedH)
 
+        // Native 1:1 Pixel Mapping (Sama persis dengan Versi 5 yang sangat tajam)
         val scale = if (maxSide > 1920 || minSide > 1080) {
             minOf(1920f / maxSide.toFloat(), 1080f / minSide.toFloat())
-        } else { 1.0f }
+        } else { 
+            1.0f 
+        }
 
-        // Memastikan output genap (syarat wajib H.264)
         var targetW = ((rotatedW * scale).toInt() / 2) * 2
         var targetH = ((rotatedH * scale).toInt() / 2) * 2
         if (targetW < 2) targetW = 720
@@ -119,8 +120,9 @@ class MainActivity : AppCompatActivity() {
 
         val interval = 30
         val effectiveClipSec = minOf(max(1, videoDurationSec), interval)
-        // Hitung batas bitrate presisi sesuai versi awal (Bravo HD)
-        val bitrateKbps = ((9.5 * 8192.0) / effectiveClipSec - 128.0).toInt().coerceIn(2500, 7500)
+        
+        // RESTORASI BATAS BAWAH BITRATE (3500k) AGAR CRF-15 TIDAK MATI KUTU!
+        val bitrateKbps = ((9.5 * 8192.0) / effectiveClipSec - 128.0).toInt().coerceIn(3500, 7500)
 
         return VideoPlan(targetW, targetH, transposeFilter, rotDesc, bitrateKbps)
     }
@@ -156,11 +158,11 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateVideoSplitPreview() {
         val totalParts = ceil(videoDurationSec.toDouble() / 30.0).toInt()
-        val plan = buildVideoPlan() // Sekarang fungsi ini sudah terdefinisi!
+        val plan = buildVideoPlan()
         
         tvMediaInfo.text = "> SONYBAE DEFINITIVE ENGINE (VIDEO)\n" +
                 "> Source: ${origDisplayW}x${origDisplayH} | ${videoDurationSec}s | ${savedOriginalSizeKb} KB\n" +
-                "> Target: True Native High Profile (BRAVO HD)\n" +
+                "> Target: ${plan.outW}x${plan.outH} (BRAVO HD ENGINE V1)\n" +
                 "> Config: ${plan.rotateDesc} | Parts: $totalParts (@30s)"
     }
 
@@ -198,7 +200,7 @@ class MainActivity : AppCompatActivity() {
         btnProcess.isEnabled = false
         btnShareWa.isEnabled = false
         progressBar.progress = 2
-        tvStatusLog.text = "Injecting High-Profile Anti-Compression..."
+        tvStatusLog.text = "Injecting BRAVO HD Engine (Anti-Compression)..."
 
         scope.launch(Dispatchers.IO) {
             val outDir = prepareOutputDir()
@@ -221,7 +223,7 @@ class MainActivity : AppCompatActivity() {
                 }
             }
 
-            // KODE SAKTI BRAVO HD (High Profile, Level 4.2, CRF 15) TANPA GANGGUAN MOVFLAGS
+            // KODE SAKTI BRAVO HD (100% IDENTIK DENGAN VERSI 5)
             val cmd = "-y -i \"$safeInputPath\" " +
                     "-vf \"$vfFilter\" " +
                     "-r 30 -g $gopFrames " +
