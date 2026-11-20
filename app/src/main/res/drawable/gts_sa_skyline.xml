@@ -5,12 +5,12 @@
     android:viewportWidth="800"
     android:viewportHeight="450">
 
-    <!-- Lapis Belakang (Tinggi & Rapat) -->
+    <!-- Lapis Belakang (Tinggi dan Rapat) -->
     <path android:fillColor="#769165" android:pathData="M0,450 L0,150 L80,150 L80,220 L150,220 L150,80 L220,80 L220,160 L280,160 L280,50 L350,50 L350,180 L420,180 L420,90 L480,90 L480,200 L560,200 L560,70 L640,70 L640,190 L720,190 L720,100 L800,100 L800,450 Z" />
     
-    <!-- Lapis Depan (Lebih Gelap & Tebal) -->
+    <!-- Lapis Depan (Lebih Gelap dan Tebal) -->
     <path android:fillColor="#5D7350" android:pathData="M0,450 L0,220 L50,220 L50,280 L120,280 L120,160 L180,160 L180,240 L260,240 L260,110 L320,110 L320,200 L400,200 L400,130 L460,130 L460,250 L540,250 L540,140 L600,140 L600,270 L680,270 L680,180 L760,180 L760,290 L800,290 L800,450 Z" />
     
-    <!-- Detail Tiang & Kabel Jembatan (Lebih Tegas) -->
+    <!-- Detail Tiang dan Kabel Jembatan (Lebih Tegas) -->
     <path android:strokeColor="#5D7350" android:strokeWidth="8" android:pathData="M350,110 L350,30 M640,140 L640,50 M120,160 L120,70" />
 </vector>

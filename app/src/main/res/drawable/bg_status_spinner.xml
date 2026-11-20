@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Kotak pilihan (spinner) hijau gelap -->
+    <item>
+        <shape android:shape="rectangle">
+            <gradient
+                android:angle="0"
+                android:endColor="#FF0E1A13"
+                android:startColor="#FF1B2C21" />
+            <corners android:radius="8dp" />
+            <stroke
+                android:width="1dp"
+                android:color="#7793AD6A" />
+        </shape>
+    </item>
+    <!-- Panah kecil warna emas di sisi kanan -->
+    <item
+        android:width="10dp"
+        android:height="10dp"
+        android:gravity="end|center_vertical"
+        android:right="12dp">
+        <rotate
+            android:fromDegrees="45"
+            android:toDegrees="45">
+            <shape android:shape="rectangle">
+                <size
+                    android:width="7dp"
+                    android:height="7dp" />
+                <solid android:color="#FFE0B35C" />
+            </shape>
+        </rotate>
+    </item>
+</layer-list>

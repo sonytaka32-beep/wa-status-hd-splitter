@@ -8,7 +8,7 @@
     <!-- Latar Belakang Deep Purple / Malam Vice City -->
     <path android:fillColor="#0F0A1E" android:pathData="M0,0 h800 v600 h-800 z" />
 
-    <!-- Aksen Neon Pink & Cyan Abstrak Ala GTA 6 -->
+    <!-- Aksen Neon Pink dan Cyan Abstrak Ala GTA 6 -->
     <path android:fillColor="#FF1E82" android:fillAlpha="0.35" android:pathData="M-100,-100 L500,200 L200,700 Z" />
     <path android:fillColor="#00F0FF" android:fillAlpha="0.25" android:pathData="M300,-50 L900,300 L600,800 Z" />
     <path android:fillColor="#7E57C2" android:fillAlpha="0.30" android:pathData="M100,100 L700,500 L400,900 Z" />

@@ -80,13 +80,12 @@ class MainActivity : AppCompatActivity() {
         rbKeepOriginal = findViewById(R.id.rbKeepOriginal)
         spinnerDurationLimit = findViewById(R.id.spinnerDurationLimit)
 
-        val spinnerAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, limitOptions)
-        spinnerAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        val spinnerAdapter = ArrayAdapter(this, R.layout.status_spinner_item, limitOptions)
+        spinnerAdapter.setDropDownViewResource(R.layout.status_spinner_dropdown_item)
         spinnerDurationLimit.adapter = spinnerAdapter
-        
+
         spinnerDurationLimit.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>, view: View?, pos: Int, id: Long) {
-                (parent.getChildAt(0) as? TextView)?.setTextColor(android.graphics.Color.WHITE)
                 if (isVideoMode && selectedUri != null) updateVideoSplitPreview()
             }
             override fun onNothingSelected(parent: AdapterView<*>) {}
