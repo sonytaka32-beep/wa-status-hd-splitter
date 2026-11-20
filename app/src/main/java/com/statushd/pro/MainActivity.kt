@@ -66,11 +66,7 @@ class MainActivity : AppCompatActivity() {
     data class VideoPlan(
         val outW: Int,
         val outH: Int,
-        /** Rotasi manual dari metadata container; ffmpeg dijalankan dengan -noautorotate. */
-        val rotationFilter: String?,
-        /** true = sumber landscape diputar 90° agar jadi portrait (Force Portrait). */
-        val rotateLandscape: Boolean,
-        /** true = kanvas diisi penuh 1080x1920 (crop), false = jaga rasio asli. */
+        /** true = seluruh frame tajam di tengah, sisa kanvas diisi blur (tanpa crop, tanpa hitam). */
         val fillCanvas: Boolean,
         val rotateDesc: String,
         val bitrateKbps: Int,
@@ -244,15 +240,11 @@ class MainActivity : AppCompatActivity() {
     private fun buildVideoPlan(): VideoPlan {
         val forcePortrait = rbRotate90.isChecked
 
-        // Rotasi dari metadata container diterapkan manual (input dijalankan dengan -noautorotate),
-        // supaya ffmpeg tidak memutar dua kali. Double-rotation inilah yang membuat output
-        // force-portrait jadi gepeng/buram.
-        val rotationFilter = when (metaRotation) {
-            90 -> "transpose=1"
-            180 -> "transpose=2,transpose=2"
-            270 -> "transpose=2"
-            else -> null
-        }
+        // Rotasi diserahkan ke FFmpeg (autorotate default): FFmpeg membaca display matrix
+        // container dan memutar piksel sekali saja. Versi lama mematikan autorotate lalu
+        // memutar manual, tapi tag rotasi input ikut tersalin ke output sehingga WhatsApp
+        // memutarnya SEKALI LAGI -> video miring + letterbox hitam. Sekarang tag itu
+        // dibuang dengan -map_metadata -1 dan tidak ada rotasi manual.
 
         val baseW: Int
         val baseH: Int
@@ -264,9 +256,8 @@ class MainActivity : AppCompatActivity() {
             baseH = if (rawH > 0) rawH else 1280
         }
 
-        // After applying the container rotation, rotate any still-landscape source so
-        // Force Portrait works for both ordinary and rotated-metadata videos.
-        val rotateLandscape = forcePortrait && baseW > baseH
+        // Force Portrait = kanvas status 1080x1920. Video TIDAK diputar dan TIDAK dipotong:
+        // frame asli ditampilkan utuh, sisa ruang diisi blur dari frame itu sendiri.
         // WA Status cuts each part around 30 seconds. Spinner controls total output duration.
         val interval = splitIntervalSec
 
@@ -277,25 +268,31 @@ class MainActivity : AppCompatActivity() {
             outW = 1080
             outH = 1920
         } else {
+            // Pertahankan orientasi asli. Batas HD: sisi pendek <= 1080, sisi panjang <= 1920.
+            // Tidak pernah upscale, jadi sumber 1612x720 tetap 1612x720 dan tetap tajam.
             val s = min(
                 1f,
                 min(1080f / min(baseW, baseH).toFloat(), 1920f / max(baseW, baseH).toFloat())
             )
-            outW = ((baseW * s).toInt() / 2) * 2
-            outH = ((baseH * s).toInt() / 2) * 2
+            outW = max(2, ((baseW * s).toInt() / 2) * 2)
+            outH = max(2, ((baseH * s).toInt() / 2) * 2)
         }
 
         val safeW = if (outW < 2) 720 else outW
         val safeH = if (outH < 2) 1280 else outH
 
-        val desc = if (forcePortrait) "Force Portrait 1080x1920 (HD)" else "Original $safeW x $safeH"
+        // Sumber yang sudah pas 9:16 tidak perlu padding blur sama sekali.
+        val alreadyStatusRatio = baseW.toLong() * 16L == baseH.toLong() * 9L
+        val desc = when {
+            !forcePortrait -> "Original $safeW x $safeH (utuh, tanpa potong)"
+            alreadyStatusRatio -> "Status 1080x1920 (pas, tanpa padding)"
+            else -> "Status 1080x1920 + blur bar (frame utuh)"
+        }
 
         return VideoPlan(
             outW = safeW,
             outH = safeH,
-            rotationFilter = rotationFilter,
-            rotateLandscape = rotateLandscape,
-            fillCanvas = forcePortrait,
+            fillCanvas = forcePortrait && !alreadyStatusRatio,
             rotateDesc = desc,
             bitrateKbps = bitrateFor(interval),
             splitIntervalSec = interval
@@ -409,19 +406,31 @@ class MainActivity : AppCompatActivity() {
                 val safeInputPath = FFmpegKitConfig.getSafParameterForRead(this@MainActivity, uri)
                 val outputPattern = File(outDir, "StatusHD_Part_%03d.mp4").absolutePath
 
-                val filters = ArrayList<String>()
-                plan.rotationFilter?.let { filters.add(it) }
-                if (plan.rotateLandscape) filters.add("transpose=1")
+                val videoFilterArgs: String
                 if (plan.fillCanvas) {
-                    // Isi penuh kanvas 1080x1920 tanpa distorsi: scale-up lalu crop center.
-                    filters.add("scale=${plan.outW}:${plan.outH}:flags=lanczos:force_original_aspect_ratio=increase")
-                    filters.add("crop=${plan.outW}:${plan.outH}")
+                    // Frame asli tampil utuh (fit, tidak dipotong) di tengah kanvas 9:16.
+                    // Sisa ruang diisi salinan frame itu sendiri yang diblur, jadi tidak ada
+                    // area hitam dan tidak ada bagian video yang hilang.
+                    // Blur dijalankan pada versi kecil (1/8) supaya murah di HP kelas menengah.
+                    val source = "[0:v]"
+                    val bgChain = "scale=${plan.outW}:${plan.outH}:force_original_aspect_ratio=increase:force_divisible_by=2," +
+                            "crop=${plan.outW}:${plan.outH}," +
+                            "scale=trunc(iw/8)*2:trunc(ih/8)*2:flags=area," +
+                            "boxblur=6:2," +
+                            "scale=${plan.outW}:${plan.outH}:flags=bicubic"
+                    val filterGraph = source +
+                            "split=2[bgsrc][fgsrc];" +
+                            "[bgsrc]$bgChain[bg];" +
+                            "[fgsrc]scale=${plan.outW}:${plan.outH}:flags=lanczos:force_original_aspect_ratio=decrease:force_divisible_by=2[fg];" +
+                            "[bg][fg]overlay=(W-w)/2:(H-h)/2:shortest=1,setsar=1,format=yuv420p[v]"
+                    videoFilterArgs = "-filter_complex \"$filterGraph\" -map \"[v]\" -map 0:a? "
                 } else {
+                    val filters = ArrayList<String>()
                     filters.add("scale=${plan.outW}:${plan.outH}:flags=lanczos")
+                    filters.add("setsar=1")
+                    filters.add("format=yuv420p")
+                    videoFilterArgs = "-vf \"${filters.joinToString(",")}\" "
                 }
-                filters.add("setsar=1")
-                filters.add("format=yuv420p")
-                val vfChain = filters.joinToString(",")
 
                 FFmpegKitConfig.enableStatisticsCallback { stats: Statistics ->
                     val timeSec = (stats.time / 1000.0).toInt()
@@ -436,12 +445,13 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
 
-                val cmd = "-y -noautorotate -i \"$safeInputPath\" " +
-                        "-vf \"$vfChain\" " +
+                val cmd = "-y -i \"$safeInputPath\" " +
+                        videoFilterArgs +
+                        "-map_metadata -1 " +
                         "-r 30 " +
                         "-g 60 -keyint_min 30 -sc_threshold 0 " +
                         "-force_key_frames \"expr:gte(t,n_forced*$interval)\" " +
-                        "-c:v libx264 -preset medium -profile:v high -level 4.2 -threads 8 " +
+                        "-c:v libx264 -preset fast -profile:v high -level 4.2 -threads 8 " +
                         "-b:v ${plan.bitrateKbps}k -maxrate ${plan.bitrateKbps}k -bufsize ${plan.bitrateKbps * 2}k " +
                         "-c:a aac -b:a 128k -ac 2 -ar 44100 " +
                         // Potong di keyframe sesuai durasi, bukan menunggu keyframe alami berikutnya.

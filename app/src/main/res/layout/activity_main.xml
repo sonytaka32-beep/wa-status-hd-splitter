@@ -182,10 +182,10 @@
                             android:layout_width="match_parent"
                             android:layout_height="42dp"
                             android:buttonTint="@color/status_radio_tint"
-                            android:checked="true"
+                            android:checked="false"
                             android:fontFamily="sans-serif-medium"
                             android:paddingStart="2dp"
-                            android:text="Force Portrait (rotate 90°)"
+                            android:text="Portrait 1080×1920 (blur bar, tanpa potong)"
                             android:textColor="#FFE7E5DA"
                             android:textSize="13sp" />
 
@@ -194,9 +194,10 @@
                             android:layout_width="match_parent"
                             android:layout_height="42dp"
                             android:buttonTint="@color/status_radio_tint"
+                            android:checked="true"
                             android:fontFamily="sans-serif-medium"
                             android:paddingStart="2dp"
-                            android:text="Keep Original Orientation"
+                            android:text="Ikuti Orientasi Asli (rekomendasi, tanpa bar)"
                             android:textColor="#FFE7E5DA"
                             android:textSize="13sp" />
                     </RadioGroup>
