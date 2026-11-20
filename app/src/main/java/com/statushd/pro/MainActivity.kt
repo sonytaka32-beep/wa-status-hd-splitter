@@ -48,7 +48,8 @@ class MainActivity : AppCompatActivity() {
         val outH: Int,
         val transposeFilter: String?,
         val rotateDesc: String,
-        val bitrateKbps: Int
+        val bitrateKbps: Int,
+        val splitIntervalSec: Int
     )
 
     private val pickVideoLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
@@ -69,12 +70,14 @@ class MainActivity : AppCompatActivity() {
         btnProcess = findViewById(R.id.btnProcess)
         btnShareWa = findViewById(R.id.btnShareWa)
         rgRotateMode = findViewById(R.id.rgRotateMode)
-        rbRotateAuto = findViewById(R.id.rbRotateAuto)
+        rbRotate90 = findViewById(R.id.rbRotate90)
 
         findViewById<Button>(R.id.btnPickVideo).setOnClickListener { pickVideoLauncher.launch("video/*") }
         findViewById<Button>(R.id.btnPickPhoto).setOnClickListener { pickPhotoLauncher.launch("image/*") }
 
-        rgRotateMode.setOnCheckedChangeListener { _, _ -> if (isVideoMode && selectedUri != null) updateVideoSplitPreview() }
+        rgRotateMode.setOnCheckedChangeListener { _, _ ->
+            if (isVideoMode && selectedUri != null) updateVideoSplitPreview()
+        }
 
         btnProcess.setOnClickListener {
             val uri = selectedUri ?: return@setOnClickListener
@@ -89,23 +92,44 @@ class MainActivity : AppCompatActivity() {
                 val sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE)
                 if (cursor.moveToFirst() && sizeIndex != -1) cursor.getLong(sizeIndex) / 1024L else 0L
             } ?: 0L
-        } catch (e: Exception) { 0L }
+        } catch (e: Exception) {
+            0L
+        }
     }
 
     private fun buildVideoPlan(): VideoPlan {
         val isHorizontal = origDisplayW > origDisplayH
+        val forcePortrait = rbRotate90.isChecked && isHorizontal
 
-        val (transposeFilter, rotDesc, rotatedW, rotatedH) = when {
-            rbRotateAuto.isChecked && isHorizontal -> Quadruple("transpose=1", "Auto Portrait", origDisplayH, origDisplayW)
-            else -> Quadruple(null, "Original", origDisplayW, origDisplayH)
+        val transposeFilter: String?
+        val rotateDesc: String
+        var rotatedW: Int
+        var rotatedH: Int
+
+        if (forcePortrait) {
+            // Metadata rotation is applied by the encoder, so swap the working dimensions too.
+            transposeFilter = "transpose=1"
+            rotateDesc = "Auto Portrait"
+            rotatedW = origDisplayH
+            rotatedH = origDisplayW
+        } else {
+            transposeFilter = null
+            rotateDesc = "Original"
+            rotatedW = origDisplayW
+            rotatedH = origDisplayH
         }
+
+        if (rotatedW <= 0) rotatedW = 720
+        if (rotatedH <= 0) rotatedH = 1280
 
         val maxSide = maxOf(rotatedW, rotatedH)
         val minSide = minOf(rotatedW, rotatedH)
 
         val scale = if (maxSide > 1920 || minSide > 1080) {
             minOf(1920f / maxSide.toFloat(), 1080f / minSide.toFloat())
-        } else { 1.0f }
+        } else {
+            1.0f
+        }
 
         var targetW = ((rotatedW * scale).toInt() / 2) * 2
         var targetH = ((rotatedH * scale).toInt() / 2) * 2
@@ -116,7 +140,7 @@ class MainActivity : AppCompatActivity() {
         val effectiveClipSec = minOf(max(1, videoDurationSec), interval)
         val bitrateKbps = ((9.5 * 8192.0) / effectiveClipSec - 128.0).toInt().coerceIn(3500, 7500)
 
-        return VideoPlan(targetW, targetH, transposeStr, rotDesc, bitrateKbps)
+        return VideoPlan(targetW, targetH, transposeFilter, rotateDesc, bitrateKbps, interval)
     }
 
     private fun analyzeVideo(uri: Uri) {
@@ -130,9 +154,11 @@ class MainActivity : AppCompatActivity() {
             retriever.release()
 
             if (metaRot == 90 || metaRot == 270) {
-                origDisplayW = rawH; origDisplayH = rawW
+                origDisplayW = rawH
+                origDisplayH = rawW
             } else {
-                origDisplayW = rawW; origDisplayH = rawH
+                origDisplayW = rawW
+                origDisplayH = rawH
             }
 
             savedOriginalSizeKb = getFileSizeKb(uri)
@@ -149,14 +175,13 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateVideoSplitPreview() {
-        val interval = 30
-        val totalParts = ceil(videoDurationSec.toDouble() / interval.toDouble()).toInt()
         val plan = buildVideoPlan()
-        
+        val totalParts = ceil(videoDurationSec.toDouble() / plan.splitIntervalSec.toDouble()).toInt()
+
         tvMediaInfo.text = "> SONYBAE DEFINITIVE ENGINE (VIDEO)\n" +
                 "> Source: ${origDisplayW}x${origDisplayH} | ${videoDurationSec}s | ${savedOriginalSizeKb} KB\n" +
                 "> Target: ${plan.outW}x${plan.outH} (BRAVO HD ENGINE V1)\n" +
-                "> Config: ${plan.rotateDesc} | Parts: $totalParts (@30s)"
+                "> Config: ${plan.rotateDesc} | Parts: $totalParts (@${plan.splitIntervalSec}s)"
     }
 
     private fun analyzePhoto(uri: Uri) {
@@ -168,7 +193,7 @@ class MainActivity : AppCompatActivity() {
             origDisplayW = boundsOpts.outWidth
             origDisplayH = boundsOpts.outHeight
             savedOriginalSizeKb = getFileSizeKb(uri)
-            
+
             tvMediaInfo.text = "> SONYBAE DEFINITIVE ENGINE (PHOTO)\n" +
                     "> Source: ${origDisplayW}x${origDisplayH} | ${savedOriginalSizeKb} KB\n" +
                     "> Target: MP4 Stream 5s Container (PlayStore Method)\n" +
@@ -196,55 +221,65 @@ class MainActivity : AppCompatActivity() {
         tvStatusLog.text = "Injecting BRAVO HD Engine (Anti-Compression)..."
 
         scope.launch(Dispatchers.IO) {
-            val outDir = prepareOutputDir()
-            val safeInputPath = FFmpegKitConfig.getSafParameterForRead(this@MainActivity, uri)
-            val outputPattern = File(outDir, "StatusHD_Part_%03d.mp4").absolutePath
+            try {
+                val outDir = prepareOutputDir()
+                val safeInputPath = FFmpegKitConfig.getSafParameterForRead(this@MainActivity, uri)
+                val outputPattern = File(outDir, "StatusHD_Part_%03d.mp4").absolutePath
 
-            val plan = buildVideoPlan()
-            val gopFrames = 30 * minOf(videoDurationSec, interval)
+                val plan = buildVideoPlan()
+                val interval = plan.splitIntervalSec
+                val gopFrames = 30 * minOf(max(1, videoDurationSec), interval)
 
-            val filters = ArrayList<String>()
-            if (plan.transposeFilter != null) {
-                filters.add(plan.transposeFilter)
-            }
-            filters.add("scale=${plan.outW}:${plan.outH}:flags=lanczos")
-            filters.add("format=yuv420p")
-            val vfChain = filters.joinToString(",")
+                val filters = ArrayList<String>()
+                plan.transposeFilter?.let { filters.add(it) }
+                filters.add("scale=${plan.outW}:${plan.outH}:flags=lanczos")
+                filters.add("format=yuv420p")
+                val vfChain = filters.joinToString(",")
 
-            FFmpegKitConfig.enableStatisticsCallback { stats: Statistics ->
-                val timeSec = (stats.time / 1000.0).toInt()
-                val pct = if (videoDurationSec > 0) ((timeSec * 100) / videoDurationSec).coerceIn(2, 99) else 50
-                runOnUiThread {
-                    progressBar.progress = pct
-                    tvStatusLog.text = "Memproses Video HD+ (${plan.outW}x${plan.outH}): $pct% (${timeSec}s / ${videoDurationSec}s)"
+                FFmpegKitConfig.enableStatisticsCallback { stats: Statistics ->
+                    val timeSec = (stats.time / 1000.0).toInt()
+                    val pct = if (videoDurationSec > 0) {
+                        ((timeSec * 100) / videoDurationSec).coerceIn(2, 99)
+                    } else {
+                        50
+                    }
+                    runOnUiThread {
+                        progressBar.progress = pct
+                        tvStatusLog.text = "Memproses Video HD+ (${plan.outW}x${plan.outH}): $pct% (${timeSec}s / ${videoDurationSec}s)"
+                    }
                 }
-            }
 
-            val cmd = "-y -i \"$safeInputPath\" " +
-                    "-vf \"$vfFilter\" " +
-                    "-r 30 -g $gopFrames " +
-                    "-c:v libx264 -preset fast -profile:v high -level 4.2 -threads 8 " +
-                    "-crf 15 -maxrate ${plan.bitrateKbps}k -bufsize ${plan.bitrateKbps * 2}k " +
-                    "-c:a aac -b:a 128k -ac 2 " +
-                    "-f segment -segment_time $interval -reset_timestamps 1 " +
-                    "\"$outputPattern\""
+                val cmd = "-y -i \"$safeInputPath\" " +
+                        "-vf \"$vfChain\" " +
+                        "-r 30 -g $gopFrames " +
+                        "-c:v libx264 -preset fast -profile:v high -level 4.2 -threads 8 " +
+                        "-crf 15 -maxrate ${plan.bitrateKbps}k -bufsize ${plan.bitrateKbps * 2}k " +
+                        "-c:a aac -b:a 128k -ac 2 " +
+                        "-f segment -segment_time $interval -reset_timestamps 1 " +
+                        "\"$outputPattern\""
 
-            val session = FFmpegKit.execute(cmd)
+                val session = FFmpegKit.execute(cmd)
 
-            withContext(Dispatchers.Main) {
-                if (ReturnCode.isSuccess(session.returnCode)) {
-                    val generated = outDir.listFiles()
-                        ?.filter { it.name.startsWith("StatusHD_Part_") && it.length() > 0 }
-                        ?.sortedBy { it.name } ?: emptyList()
+                withContext(Dispatchers.Main) {
+                    if (ReturnCode.isSuccess(session.returnCode)) {
+                        val generated = outDir.listFiles()
+                            ?.filter { it.name.startsWith("StatusHD_Part_") && it.length() > 0 }
+                            ?.sortedBy { it.name } ?: emptyList()
 
-                    outputFiles.addAll(generated)
-                    progressBar.progress = 100
-                    tvStatusLog.text = "System: Video Compression Complete!"
-                    btnShareWa.isEnabled = outputFiles.isNotEmpty()
-                } else {
-                    tvStatusLog.text = "Error: Video Compression Failed. ${session.failStackTrace}"
+                        outputFiles.addAll(generated)
+                        progressBar.progress = 100
+                        tvStatusLog.text = "System: Video Compression Complete!"
+                        btnShareWa.isEnabled = outputFiles.isNotEmpty()
+                    } else {
+                        tvStatusLog.text = "Error: Video Compression Failed. ${session.failStackTrace}"
+                    }
+                    btnProcess.isEnabled = true
                 }
-                btnProcess.isEnabled = true
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    tvStatusLog.text = "Error: ${e.message}"
+                    btnProcess.isEnabled = true
+                }
             }
         }
     }
@@ -258,34 +293,53 @@ class MainActivity : AppCompatActivity() {
         scope.launch(Dispatchers.IO) {
             try {
                 val outDir = prepareOutputDir()
-                
+
                 val decodeOpts = BitmapFactory.Options().apply { inPreferredConfig = Bitmap.Config.ARGB_8888 }
-                var bitmap = contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, decodeOpts) } ?: throw Exception("Image decode error")
+                var bmp = contentResolver.openInputStream(uri)?.use {
+                    BitmapFactory.decodeStream(it, null, decodeOpts)
+                } ?: throw Exception("Image decode error")
 
                 val rot = contentResolver.openInputStream(uri)?.use { input ->
                     when (ExifInterface(input).getAttributeInt(ExifInterface.TAG_ORIENTATION, 1)) {
-                        6 -> 90f; 3 -> 180f; 8 -> 270f; else -> 0f
+                        6 -> 90f
+                        3 -> 180f
+                        8 -> 270f
+                        else -> 0f
                     }
                 } ?: 0f
 
                 if (rot != 0f) {
                     val mat = Matrix().apply { postRotate(rot) }
-                    val rotBmp = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, mat, true)
-                    if (rotBmp != bitmap) {
-                        bitmap.recycle()
-                        bitmap = rotBmp
+                    val rotBmp = Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, mat, true)
+                    if (rotBmp != bmp) {
+                        bmp.recycle()
+                        bmp = rotBmp
                     }
                 }
 
-                val scale = minOf(1920f / maxOf(bitmap.width, bitmap.height).toFloat(), 1080f / minOf(bitmap.width, bitmap.height).toFloat()).coerceAtMost(1.0f)
-                var pW = (bitmap.width * scale).toInt()
-                var pH = (bitmap.height * scale).toInt()
+                val scale = minOf(
+                    1920f / maxOf(bmp.width, bmp.height).toFloat(),
+                    1080f / minOf(bmp.width, bmp.height).toFloat()
+                ).coerceAtMost(1.0f)
+
+                var pW = (bmp.width * scale).toInt()
+                var pH = (bmp.height * scale).toInt()
+                if (pW < 2) pW = 2
+                if (pH < 2) pH = 2
                 if (pW % 2 != 0) pW++
                 if (pH % 2 != 0) pH++
 
+                if (bmp.width != pW || bmp.height != pH) {
+                    val resized = Bitmap.createScaledBitmap(bmp, pW, pH, true)
+                    if (resized != bmp) {
+                        bmp.recycle()
+                        bmp = resized
+                    }
+                }
+
                 val tempPng = File(cacheDir, "hd_frame.png")
-                FileOutputStream(tempPng).use { scaled.compress(Bitmap.CompressFormat.PNG, 100, it) }
-                scaled.recycle()
+                FileOutputStream(tempPng).use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                bmp.recycle()
 
                 runOnUiThread {
                     progressBar.progress = 60
@@ -327,26 +381,26 @@ class MainActivity : AppCompatActivity() {
     private fun shareToWhatsApp() {
         if (outputFiles.isEmpty()) return
         val uris = outputFiles.map { FileProvider.getUriForFile(this, "${packageName}.provider", it) }
-        
-        val mimeType = "video/mp4" 
-        
+
+        val mimeType = "video/mp4"
+
         val intent = if (uris.size == 1) {
-            Intent(Intent.ACTION_SEND).apply { 
+            Intent(Intent.ACTION_SEND).apply {
                 type = mimeType
-                putExtra(Intent.EXTRA_STREAM, uris[0]) 
+                putExtra(Intent.EXTRA_STREAM, uris[0])
             }
         } else {
-            Intent(Intent.ACTION_SEND_MULTIPLE).apply { 
+            Intent(Intent.ACTION_SEND_MULTIPLE).apply {
                 type = mimeType
-                putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(uris)) 
+                putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(uris))
             }
         }
-        
+
         intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         intent.setPackage("com.whatsapp")
-        
-        try { 
-            startActivity(intent) 
+
+        try {
+            startActivity(intent)
         } catch (e: Exception) {
             intent.setPackage(null)
             startActivity(Intent.createChooser(intent, "Send to Status WA"))
