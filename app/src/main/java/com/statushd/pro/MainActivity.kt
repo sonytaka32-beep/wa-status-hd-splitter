@@ -451,7 +451,7 @@ class MainActivity : AppCompatActivity() {
                         "-r 30 " +
                         "-g 60 -keyint_min 30 -sc_threshold 0 " +
                         "-force_key_frames \"expr:gte(t,n_forced*$interval)\" " +
-                        "-c:v libx264 -preset fast -profile:v high -level 4.2 -threads 8 " +
+                        "-c:v libx264 -preset ultrafast -profile:v high -level 4.2 -threads 8 " +
                         "-b:v ${plan.bitrateKbps}k -maxrate ${plan.bitrateKbps}k -bufsize ${plan.bitrateKbps * 2}k " +
                         "-c:a aac -b:a 128k -ac 2 -ar 44100 " +
                         // Potong di keyframe sesuai durasi, bukan menunggu keyframe alami berikutnya.
