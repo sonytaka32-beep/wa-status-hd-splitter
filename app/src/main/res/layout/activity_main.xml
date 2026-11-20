@@ -213,7 +213,7 @@
                         android:layout_height="wrap_content"
                         android:layout_marginBottom="3dp"
                         android:fontFamily="sans-serif-condensed"
-                        android:text="OUTPUT DURATION LIMIT"
+                        android:text="TOTAL VIDEO DURATION"
                         android:textColor="#E5C479"
                         android:textSize="12sp"
                         android:textStyle="bold" />
@@ -227,6 +227,45 @@
                         android:paddingStart="5dp"
                         android:paddingEnd="7dp"
                         android:popupBackground="#FF182019" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:fontFamily="sans-serif"
+                        android:text="Video otomatis dibagi menjadi beberapa part 30 detik."
+                        android:textColor="#FFCAD1C3"
+                        android:textSize="11sp" />
+
+                    <TextView
+                        android:id="@+id/tvCustomDurationLabel"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:layout_marginBottom="3dp"
+                        android:fontFamily="sans-serif-condensed"
+                        android:text="DURASI KHUSUS (MENIT)"
+                        android:textColor="#E5C479"
+                        android:textSize="12sp"
+                        android:textStyle="bold"
+                        android:visibility="gone" />
+
+                    <EditText
+                        android:id="@+id/etCustomDurationMinutes"
+                        android:layout_width="match_parent"
+                        android:layout_height="42dp"
+                        android:background="@drawable/bg_status_log"
+                        android:hint="Contoh: 5 menit (1–99)"
+                        android:inputType="number"
+                        android:imeOptions="actionDone"
+                        android:maxLength="2"
+                        android:paddingStart="12dp"
+                        android:paddingEnd="12dp"
+                        android:singleLine="true"
+                        android:textColor="#FFE6F0D5"
+                        android:textColorHint="#99E6F0D5"
+                        android:textSize="14sp"
+                        android:visibility="gone" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 

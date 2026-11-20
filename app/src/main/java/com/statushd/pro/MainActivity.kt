@@ -36,10 +36,13 @@ class MainActivity : AppCompatActivity() {
     private lateinit var rgRotateMode: RadioGroup
     private lateinit var rbRotate90: RadioButton
     private lateinit var spinnerDuration: Spinner
+    private lateinit var customDurationLabel: TextView
+    private lateinit var customDurationMinutes: EditText
 
     private var selectedUri: Uri? = null
     private var isVideoMode: Boolean = true
     private var videoDurationSec: Int = 0
+    private var videoDurationSecondsExact: Double = 0.0
 
     // Raw (pre-rotation) pixel size + container rotation metadata.
     private var rawW: Int = 720
@@ -54,6 +57,7 @@ class MainActivity : AppCompatActivity() {
     // Batas total durasi hasil kompresi; tiap berkas tetap dibagi maksimal 30 detik
     // agar kompatibel dengan WhatsApp Status versi yang membatasi video 30 detik.
     private var outputDurationLimitSec: Int = 30
+    private var customDurationHasError: Boolean = false
     private val splitIntervalSec: Int = 30
 
     private val outputFiles = ArrayList<File>()
@@ -93,6 +97,8 @@ class MainActivity : AppCompatActivity() {
         rgRotateMode = findViewById(R.id.rgRotateMode)
         rbRotate90 = findViewById(R.id.rbRotate90)
         spinnerDuration = findViewById(R.id.spinnerDurationLimit)
+        customDurationLabel = findViewById(R.id.tvCustomDurationLabel)
+        customDurationMinutes = findViewById(R.id.etCustomDurationMinutes)
 
         findViewById<Button>(R.id.btnPickVideo).setOnClickListener { pickVideoLauncher.launch("video/*") }
         findViewById<Button>(R.id.btnPickPhoto).setOnClickListener { pickPhotoLauncher.launch("image/*") }
@@ -105,7 +111,15 @@ class MainActivity : AppCompatActivity() {
 
         btnProcess.setOnClickListener {
             val uri = selectedUri ?: return@setOnClickListener
-            if (isVideoMode) processVideoBypass(uri) else processPhotoBypass(uri)
+            if (isVideoMode) {
+                if (isCustomDurationSelected() && !updateCustomDurationFromInput()) {
+                    customDurationMinutes.requestFocus()
+                    return@setOnClickListener
+                }
+                processVideoBypass(uri)
+            } else {
+                processPhotoBypass(uri)
+            }
         }
         btnShareWa.setOnClickListener { shareToWhatsApp() }
     }
@@ -136,31 +150,95 @@ class MainActivity : AppCompatActivity() {
     private fun estimatePartMb(intervalSec: Int): Double =
         (bitrateFor(intervalSec) + AUDIO_KBPS) * max(1, intervalSec) / 8.0 / 1024.0
 
-    /** Isi spinner untuk batas durasi total video output: 30-210 detik. */
+    /** Isi spinner untuk batas total: 30 detik hingga 30 menit, semua video, dan custom. */
     private fun setupDurationSpinner() {
         val seconds = resources.getIntArray(R.array.duration_limit_seconds)
             .takeIf { it.isNotEmpty() } ?: intArrayOf(30)
 
         val labels = seconds.map { sec ->
-            String.format(Locale.US, "%d detik", sec)
+            when (sec) {
+                ALL_DURATION_SENTINEL -> "Semua durasi video"
+                CUSTOM_DURATION_SENTINEL -> "Custom…"
+                else -> formatDuration(sec)
+            }
         }
 
         val adapter = ArrayAdapter(this, R.layout.status_spinner_item, labels)
         adapter.setDropDownViewResource(R.layout.status_spinner_dropdown_item)
         spinnerDuration.adapter = adapter
 
-        val defaultIndex = seconds.indexOf(30).let { if (it >= 0) it else 0 }
-        outputDurationLimitSec = seconds[defaultIndex]
+        // Default to all source duration so long videos are not silently truncated.
+        // The output is still split into 30-second parts for WhatsApp Status.
+        val defaultIndex = seconds.indexOf(ALL_DURATION_SENTINEL).let { if (it >= 0) it else 0 }
+        outputDurationLimitSec = if (seconds[defaultIndex] == ALL_DURATION_SENTINEL) Int.MAX_VALUE else seconds[defaultIndex]
         spinnerDuration.setSelection(defaultIndex, false)
 
         spinnerDuration.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                outputDurationLimitSec = seconds.getOrElse(position) { 30 }
-                if (isVideoMode && selectedUri != null) updateVideoSplitPreview()
+                val selected = seconds.getOrElse(position) { 30 }
+                val isCustom = selected == CUSTOM_DURATION_SENTINEL
+                val isAll = selected == ALL_DURATION_SENTINEL
+                customDurationLabel.visibility = if (isCustom) View.VISIBLE else View.GONE
+                customDurationMinutes.visibility = if (isCustom) View.VISIBLE else View.GONE
+
+                if (isCustom) {
+                    updateCustomDurationFromInput()
+                } else {
+                    customDurationHasError = false
+                    customDurationMinutes.error = null
+                    outputDurationLimitSec = if (isAll) Int.MAX_VALUE else selected
+                    if (isVideoMode && selectedUri != null) updateVideoSplitPreview()
+                }
             }
 
             override fun onNothingSelected(parent: AdapterView<*>?) = Unit
         }
+
+        customDurationMinutes.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_DONE) {
+                updateCustomDurationFromInput()
+                customDurationMinutes.clearFocus()
+                true
+            } else {
+                false
+            }
+        }
+
+        customDurationMinutes.setOnFocusChangeListener { _, hasFocus ->
+            if (!hasFocus && isCustomDurationSelected()) updateCustomDurationFromInput()
+        }
+    }
+
+    private fun isCustomDurationSelected(): Boolean =
+        spinnerDuration.selectedItemPosition >= 0 &&
+                resources.getIntArray(R.array.duration_limit_seconds)
+                    .getOrElse(spinnerDuration.selectedItemPosition) { 30 } == CUSTOM_DURATION_SENTINEL
+
+    private fun isAllDurationSelected(): Boolean =
+        spinnerDuration.selectedItemPosition >= 0 &&
+                resources.getIntArray(R.array.duration_limit_seconds)
+                    .getOrElse(spinnerDuration.selectedItemPosition) { 30 } == ALL_DURATION_SENTINEL
+
+    private fun updateCustomDurationFromInput(): Boolean {
+        val minutes = customDurationMinutes.text.toString().toIntOrNull()
+        if (minutes == null || minutes !in 1..MAX_CUSTOM_DURATION_MINUTES) {
+            customDurationMinutes.error = "Masukkan 1–$MAX_CUSTOM_DURATION_MINUTES menit"
+            customDurationHasError = true
+            if (isVideoMode && selectedUri != null) updateVideoSplitPreview()
+            return false
+        }
+
+        customDurationMinutes.error = null
+        customDurationHasError = false
+        outputDurationLimitSec = minutes * SECONDS_PER_MINUTE
+        if (isVideoMode && selectedUri != null) updateVideoSplitPreview()
+        return true
+    }
+
+    private fun formatDuration(seconds: Int): String = when {
+        seconds % SECONDS_PER_MINUTE == 0 -> "${seconds / SECONDS_PER_MINUTE} menit"
+        seconds >= SECONDS_PER_MINUTE -> "${seconds / SECONDS_PER_MINUTE}m ${seconds % SECONDS_PER_MINUTE}d"
+        else -> "$seconds detik"
     }
 
     private fun buildVideoPlan(): VideoPlan {
@@ -246,7 +324,8 @@ class MainActivity : AppCompatActivity() {
             }
 
             savedOriginalSizeKb = getFileSizeKb(uri)
-            videoDurationSec = max(1, ceil(durationMs / 1000.0).toInt())
+            videoDurationSecondsExact = max(0L, durationMs).toDouble() / 1000.0
+            videoDurationSec = max(1, ceil(videoDurationSecondsExact).toInt())
             updateVideoSplitPreview()
 
             progressBar.progress = 0
@@ -276,7 +355,7 @@ class MainActivity : AppCompatActivity() {
         tvMediaInfo.text = "> SONYBAE DEFINITIVE ENGINE (VIDEO)\n" +
                 "> Source: ${origDisplayW}x${origDisplayH} | ${videoDurationSec}s | ${savedOriginalSizeKb} KB\n" +
                 "> Target: ${plan.outW}x${plan.outH} @ ${plan.bitrateKbps} kbps (BRAVO HD ENGINE)\n" +
-                "> Config: ${plan.rotateDesc} | Limit ${outputDurationLimitSec}s, $totalParts part @ ${plan.splitIntervalSec}s" +
+                "> Config: ${plan.rotateDesc} | Limit ${if (isCustomDurationSelected() && customDurationHasError) "custom belum valid" else if (isAllDurationSelected()) "semua video" else formatDuration(outputDurationLimitSec)}, $totalParts part @ ${plan.splitIntervalSec}s" +
                 warnings
     }
 
@@ -313,7 +392,10 @@ class MainActivity : AppCompatActivity() {
         // Snapshot UI selections on the main thread before starting background encoding.
         val plan = buildVideoPlan()
         val interval = plan.splitIntervalSec
-        val processDurationSec = min(videoDurationSec, outputDurationLimitSec).coerceAtLeast(1)
+        val processDurationSec = min(
+            videoDurationSecondsExact.takeIf { it > 0.0 } ?: videoDurationSec.toDouble(),
+            outputDurationLimitSec.toDouble()
+        ).coerceAtLeast(0.1)
         outputFiles.clear()
 
         btnProcess.isEnabled = false
@@ -344,7 +426,7 @@ class MainActivity : AppCompatActivity() {
                 FFmpegKitConfig.enableStatisticsCallback { stats: Statistics ->
                     val timeSec = (stats.time / 1000.0).toInt()
                     val pct = if (processDurationSec > 0) {
-                        ((timeSec * 100) / processDurationSec).coerceIn(2, 99)
+                        ((timeSec * 100.0) / processDurationSec).toInt().coerceIn(2, 99)
                     } else {
                         50
                     }
@@ -363,7 +445,7 @@ class MainActivity : AppCompatActivity() {
                         "-b:v ${plan.bitrateKbps}k -maxrate ${plan.bitrateKbps}k -bufsize ${plan.bitrateKbps * 2}k " +
                         "-c:a aac -b:a 128k -ac 2 -ar 44100 " +
                         // Potong di keyframe sesuai durasi, bukan menunggu keyframe alami berikutnya.
-                        "-t $processDurationSec " +
+                        "-t ${String.format(Locale.US, "%.3f", processDurationSec)} " +
                         "-f segment -segment_format mp4 -segment_time $interval -segment_time_delta 0.5 -reset_timestamps 1 " +
                         "\"$outputPattern\""
 
@@ -532,6 +614,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     companion object {
+        private const val ALL_DURATION_SENTINEL = -1
+        private const val CUSTOM_DURATION_SENTINEL = 0
+        private const val MAX_CUSTOM_DURATION_MINUTES = 99
+        private const val SECONDS_PER_MINUTE = 60
+
         /** Target ukuran per part; bitrate 3500 kbps + audio 128 kbps stays under this. */
         private const val WA_PART_BUDGET_KB = 15000.0
         private const val AUDIO_KBPS = 128.0
