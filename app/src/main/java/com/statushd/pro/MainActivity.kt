@@ -51,8 +51,10 @@ class MainActivity : AppCompatActivity() {
     private var origDisplayH: Int = 1280
     private var savedOriginalSizeKb: Long = 0L
 
-    // Durasi per bagian output, diambil dari spinner 30..210 detik.
-    private var splitIntervalSec: Int = 30
+    // Batas total durasi hasil kompresi; tiap berkas tetap dibagi maksimal 30 detik
+    // agar kompatibel dengan WhatsApp Status versi yang membatasi video 30 detik.
+    private var outputDurationLimitSec: Int = 30
+    private val splitIntervalSec: Int = 30
 
     private val outputFiles = ArrayList<File>()
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
@@ -119,29 +121,28 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** Bitrate target: 1 bagian harus muat di bawah ~16 MB (batas video WhatsApp Status). */
+    /** Bitrate target: satu bagian 30 detik dijaga sekitar 14 MB agar ada margin di batas WA. */
     private fun bitrateFor(intervalSec: Int): Int {
         val safeInterval = max(1, intervalSec)
-        val budgetKbps = WA_PART_BUDGET_KB * 8.0 / safeInterval - AUDIO_KBPS
-        // Batas bawah agar bagian panjang (180–210 detik) tetap di bawah ~16 MB;
-        // 30 detik tetap ~3500–4000 kbps (HD). Durasi lebih panjang menurunkan bitrate
-        // otomatis agar WA tidak memotong/re-encode ulang bagiannya.
-        return budgetKbps.toInt().coerceIn(400, 9000)
+        // Reserve ~7% for muxing/bitrate variation so the estimated 14 MiB target
+        // stays safely below WhatsApp's practical per-status limit.
+        val budgetKbps = WA_PART_BUDGET_KB * 8.0 * 0.93 / safeInterval - AUDIO_KBPS
+        // Maksimum 3500 kbps (Bravo HD); dengan audio 128 kbps, part 30 detik
+        // diperkirakan sekitar 13.3 MiB, dengan ruang aman di bawah limit Status.
+        return budgetKbps.toInt().coerceIn(400, 3500)
     }
 
     /** Perkiraan ukuran 1 bagian output dalam MB (video + audio). */
     private fun estimatePartMb(intervalSec: Int): Double =
         (bitrateFor(intervalSec) + AUDIO_KBPS) * max(1, intervalSec) / 8.0 / 1024.0
 
-    /** Isi spinner OUTPUT DURATION LIMIT: 30-210 detik, plus estimasi ukuran per bagian. */
+    /** Isi spinner untuk batas durasi total video output: 30-210 detik. */
     private fun setupDurationSpinner() {
         val seconds = resources.getIntArray(R.array.duration_limit_seconds)
             .takeIf { it.isNotEmpty() } ?: intArrayOf(30)
 
         val labels = seconds.map { sec ->
-            val mb = estimatePartMb(sec)
-            val overflow = if (mb > WA_PART_BUDGET_KB / 1024.0) "  !" else ""
-            String.format(Locale.US, "%d detik  (~%.1f MB)%s", sec, mb, overflow)
+            String.format(Locale.US, "%d detik", sec)
         }
 
         val adapter = ArrayAdapter(this, R.layout.status_spinner_item, labels)
@@ -149,12 +150,12 @@ class MainActivity : AppCompatActivity() {
         spinnerDuration.adapter = adapter
 
         val defaultIndex = seconds.indexOf(30).let { if (it >= 0) it else 0 }
-        splitIntervalSec = seconds[defaultIndex]
+        outputDurationLimitSec = seconds[defaultIndex]
         spinnerDuration.setSelection(defaultIndex, false)
 
         spinnerDuration.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                splitIntervalSec = seconds.getOrElse(position) { 30 }
+                outputDurationLimitSec = seconds.getOrElse(position) { 30 }
                 if (isVideoMode && selectedUri != null) updateVideoSplitPreview()
             }
 
@@ -185,8 +186,11 @@ class MainActivity : AppCompatActivity() {
             baseH = if (rawH > 0) rawH else 1280
         }
 
+        // After applying the container rotation, rotate any still-landscape source so
+        // Force Portrait works for both ordinary and rotated-metadata videos.
         val rotateLandscape = forcePortrait && baseW > baseH
-        val interval = splitIntervalSec.coerceAtLeast(1)
+        // WA Status cuts each part around 30 seconds. Spinner controls total output duration.
+        val interval = splitIntervalSec
 
         val outW: Int
         val outH: Int
@@ -242,7 +246,7 @@ class MainActivity : AppCompatActivity() {
             }
 
             savedOriginalSizeKb = getFileSizeKb(uri)
-            videoDurationSec = max(1, (durationMs / 1000).toInt())
+            videoDurationSec = max(1, ceil(durationMs / 1000.0).toInt())
             updateVideoSplitPreview()
 
             progressBar.progress = 0
@@ -258,7 +262,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateVideoSplitPreview() {
         val plan = buildVideoPlan()
-        val totalParts = max(1, ceil(videoDurationSec.toDouble() / plan.splitIntervalSec.toDouble()).toInt())
+        val selectedDuration = min(videoDurationSec, outputDurationLimitSec)
+        val totalParts = max(1, ceil(selectedDuration.toDouble() / plan.splitIntervalSec.toDouble()).toInt())
         val partMb = estimatePartMb(plan.splitIntervalSec)
         val limitMb = WA_PART_BUDGET_KB / 1024.0
 
@@ -266,15 +271,12 @@ class MainActivity : AppCompatActivity() {
             if (partMb > limitMb) {
                 append(String.format(Locale.US, "\n> ! %.1f MB/part > %.0f MB: WA akan re-encode (buram).", partMb, limitMb))
             }
-            if (plan.splitIntervalSec > 30) {
-                append("\n> ! Status WA normalnya memotong video >30 detik.")
-            }
         }
 
         tvMediaInfo.text = "> SONYBAE DEFINITIVE ENGINE (VIDEO)\n" +
                 "> Source: ${origDisplayW}x${origDisplayH} | ${videoDurationSec}s | ${savedOriginalSizeKb} KB\n" +
                 "> Target: ${plan.outW}x${plan.outH} @ ${plan.bitrateKbps} kbps (BRAVO HD ENGINE)\n" +
-                "> Config: ${plan.rotateDesc} | $totalParts part @ ${plan.splitIntervalSec}s" +
+                "> Config: ${plan.rotateDesc} | Limit ${outputDurationLimitSec}s, $totalParts part @ ${plan.splitIntervalSec}s" +
                 warnings
     }
 
@@ -304,24 +306,26 @@ class MainActivity : AppCompatActivity() {
     private fun prepareOutputDir(): File {
         val dir = File(externalCacheDir ?: cacheDir, "status_hd_out")
         if (dir.exists()) dir.listFiles()?.forEach { it.delete() } else dir.mkdirs()
-        outputFiles.clear()
         return dir
     }
 
     private fun processVideoBypass(uri: Uri) {
+        // Snapshot UI selections on the main thread before starting background encoding.
+        val plan = buildVideoPlan()
+        val interval = plan.splitIntervalSec
+        val processDurationSec = min(videoDurationSec, outputDurationLimitSec).coerceAtLeast(1)
+        outputFiles.clear()
+
         btnProcess.isEnabled = false
         btnShareWa.isEnabled = false
         progressBar.progress = 2
-        tvStatusLog.text = "Injecting BRAVO HD Engine (Anti-Compression)..."
+        tvStatusLog.text = "Menyiapkan encoding video HD... WhatsApp masih dapat mengompres ulang."
 
         scope.launch(Dispatchers.IO) {
             try {
                 val outDir = prepareOutputDir()
                 val safeInputPath = FFmpegKitConfig.getSafParameterForRead(this@MainActivity, uri)
                 val outputPattern = File(outDir, "StatusHD_Part_%03d.mp4").absolutePath
-
-                val plan = buildVideoPlan()
-                val interval = plan.splitIntervalSec
 
                 val filters = ArrayList<String>()
                 plan.rotationFilter?.let { filters.add(it) }
@@ -339,29 +343,32 @@ class MainActivity : AppCompatActivity() {
 
                 FFmpegKitConfig.enableStatisticsCallback { stats: Statistics ->
                     val timeSec = (stats.time / 1000.0).toInt()
-                    val pct = if (videoDurationSec > 0) {
-                        ((timeSec * 100) / videoDurationSec).coerceIn(2, 99)
+                    val pct = if (processDurationSec > 0) {
+                        ((timeSec * 100) / processDurationSec).coerceIn(2, 99)
                     } else {
                         50
                     }
                     runOnUiThread {
                         progressBar.progress = pct
-                        tvStatusLog.text = "Memproses Video HD+ (${plan.outW}x${plan.outH}): $pct% (${timeSec}s / ${videoDurationSec}s)"
+                        tvStatusLog.text = "Memproses Video HD+ (${plan.outW}x${plan.outH}): $pct% (${timeSec}s / ${processDurationSec}s)"
                     }
                 }
 
                 val cmd = "-y -noautorotate -i \"$safeInputPath\" " +
                         "-vf \"$vfChain\" " +
-                        "-r 30 -vsync cfr " +
+                        "-r 30 " +
                         "-g 60 -keyint_min 30 -sc_threshold 0 " +
                         "-force_key_frames \"expr:gte(t,n_forced*$interval)\" " +
                         "-c:v libx264 -preset medium -profile:v high -level 4.2 -threads 8 " +
                         "-b:v ${plan.bitrateKbps}k -maxrate ${plan.bitrateKbps}k -bufsize ${plan.bitrateKbps * 2}k " +
                         "-c:a aac -b:a 128k -ac 2 -ar 44100 " +
-                        "-f segment -segment_format mp4 -segment_time $interval -reset_timestamps 1 " +
+                        // Potong di keyframe sesuai durasi, bukan menunggu keyframe alami berikutnya.
+                        "-t $processDurationSec " +
+                        "-f segment -segment_format mp4 -segment_time $interval -segment_time_delta 0.5 -reset_timestamps 1 " +
                         "\"$outputPattern\""
 
                 val session = FFmpegKit.execute(cmd)
+                FFmpegKitConfig.enableStatisticsCallback { }
 
                 withContext(Dispatchers.Main) {
                     if (ReturnCode.isSuccess(session.returnCode)) {
@@ -396,6 +403,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun processPhotoBypass(uri: Uri) {
+        outputFiles.clear()
         btnProcess.isEnabled = false
         btnShareWa.isEnabled = false
         progressBar.progress = 25
@@ -524,8 +532,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     companion object {
-        /** Batas aman ukuran 1 video status WhatsApp (~16 MB) dalam KB. */
-        private const val WA_PART_BUDGET_KB = 15500.0
+        /** Target ukuran per part; bitrate 3500 kbps + audio 128 kbps stays under this. */
+        private const val WA_PART_BUDGET_KB = 15000.0
         private const val AUDIO_KBPS = 128.0
     }
 }
