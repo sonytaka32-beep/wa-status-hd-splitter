@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Durasi per bagian (part) output video, dalam detik.
+         Dikonsumsi oleh MainActivity.setupDurationSpinner(). -->
+    <integer-array name="duration_limit_seconds">
+        <item>30</item>
+        <item>45</item>
+        <item>60</item>
+        <item>90</item>
+        <item>120</item>
+        <item>150</item>
+        <item>180</item>
+        <item>210</item>
+    </integer-array>
+</resources>

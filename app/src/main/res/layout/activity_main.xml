@@ -13,11 +13,11 @@
         android:scaleType="centerCrop"
         android:src="@drawable/bg_status_art" />
 
-    <!-- Light scrim keeps the green San Andreas UI readable on top of the busy poster. -->
+    <!-- Scrim keeps the green San Andreas UI readable on top of the busy poster. -->
     <View
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:background="#2E000000" />
+        android:background="#59000000" />
 
     <ScrollView
         android:layout_width="match_parent"
@@ -63,10 +63,15 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="3dp"
+                android:layout_marginTop="5dp"
                 android:layout_marginBottom="8dp"
+                android:background="@drawable/bg_status_log"
                 android:fontFamily="sans-serif-condensed"
                 android:letterSpacing="0.10"
+                android:paddingStart="9dp"
+                android:paddingTop="3dp"
+                android:paddingEnd="9dp"
+                android:paddingBottom="3dp"
                 android:text="STATUS VIDEO / PHOTO OPTIMIZER"
                 android:textColor="#FFD0A46B"
                 android:textSize="10sp"
@@ -259,11 +264,14 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="6dp"
                 android:layout_marginBottom="12dp"
+                android:background="@drawable/bg_status_log"
                 android:fontFamily="sans-serif-condensed"
-                android:paddingStart="5dp"
-                android:paddingEnd="5dp"
+                android:paddingStart="9dp"
+                android:paddingTop="6dp"
+                android:paddingEnd="9dp"
+                android:paddingBottom="6dp"
                 android:text="STATUS: IDLE"
-                android:textColor="#FFB8C8A8"
+                android:textColor="#FFD9E4C9"
                 android:textSize="12sp" />
 
             <!-- Keep output/share action readily reachable -->

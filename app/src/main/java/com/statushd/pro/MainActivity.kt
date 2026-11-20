@@ -9,6 +9,7 @@ import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Bundle
 import android.provider.OpenableColumns
+import android.view.View
 import android.widget.*
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -20,8 +21,10 @@ import com.antonkarpenko.ffmpegkit.Statistics
 import kotlinx.coroutines.*
 import java.io.File
 import java.io.FileOutputStream
+import java.util.Locale
 import kotlin.math.ceil
 import kotlin.math.max
+import kotlin.math.min
 
 class MainActivity : AppCompatActivity() {
 
@@ -32,13 +35,24 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnShareWa: Button
     private lateinit var rgRotateMode: RadioGroup
     private lateinit var rbRotate90: RadioButton
+    private lateinit var spinnerDuration: Spinner
 
     private var selectedUri: Uri? = null
     private var isVideoMode: Boolean = true
     private var videoDurationSec: Int = 0
+
+    // Raw (pre-rotation) pixel size + container rotation metadata.
+    private var rawW: Int = 720
+    private var rawH: Int = 1280
+    private var metaRotation: Int = 0
+
+    // Display size as seen by the user (rotation metadata already applied).
     private var origDisplayW: Int = 720
     private var origDisplayH: Int = 1280
     private var savedOriginalSizeKb: Long = 0L
+
+    // Durasi per bagian output, diambil dari spinner 30..210 detik.
+    private var splitIntervalSec: Int = 30
 
     private val outputFiles = ArrayList<File>()
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
@@ -46,7 +60,12 @@ class MainActivity : AppCompatActivity() {
     data class VideoPlan(
         val outW: Int,
         val outH: Int,
-        val transposeFilter: String?,
+        /** Rotasi manual dari metadata container; ffmpeg dijalankan dengan -noautorotate. */
+        val rotationFilter: String?,
+        /** true = sumber landscape diputar 90° agar jadi portrait (Force Portrait). */
+        val rotateLandscape: Boolean,
+        /** true = kanvas diisi penuh 1080x1920 (crop), false = jaga rasio asli. */
+        val fillCanvas: Boolean,
         val rotateDesc: String,
         val bitrateKbps: Int,
         val splitIntervalSec: Int
@@ -71,9 +90,12 @@ class MainActivity : AppCompatActivity() {
         btnShareWa = findViewById(R.id.btnShareWa)
         rgRotateMode = findViewById(R.id.rgRotateMode)
         rbRotate90 = findViewById(R.id.rbRotate90)
+        spinnerDuration = findViewById(R.id.spinnerDurationLimit)
 
         findViewById<Button>(R.id.btnPickVideo).setOnClickListener { pickVideoLauncher.launch("video/*") }
         findViewById<Button>(R.id.btnPickPhoto).setOnClickListener { pickPhotoLauncher.launch("image/*") }
+
+        setupDurationSpinner()
 
         rgRotateMode.setOnCheckedChangeListener { _, _ ->
             if (isVideoMode && selectedUri != null) updateVideoSplitPreview()
@@ -97,63 +119,121 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /** Bitrate target: 1 bagian harus muat di bawah ~16 MB (batas video WhatsApp Status). */
+    private fun bitrateFor(intervalSec: Int): Int {
+        val safeInterval = max(1, intervalSec)
+        val budgetKbps = WA_PART_BUDGET_KB * 8.0 / safeInterval - AUDIO_KBPS
+        // Batas bawah agar bagian panjang (180–210 detik) tetap di bawah ~16 MB;
+        // 30 detik tetap ~3500–4000 kbps (HD). Durasi lebih panjang menurunkan bitrate
+        // otomatis agar WA tidak memotong/re-encode ulang bagiannya.
+        return budgetKbps.toInt().coerceIn(400, 9000)
+    }
+
+    /** Perkiraan ukuran 1 bagian output dalam MB (video + audio). */
+    private fun estimatePartMb(intervalSec: Int): Double =
+        (bitrateFor(intervalSec) + AUDIO_KBPS) * max(1, intervalSec) / 8.0 / 1024.0
+
+    /** Isi spinner OUTPUT DURATION LIMIT: 30-210 detik, plus estimasi ukuran per bagian. */
+    private fun setupDurationSpinner() {
+        val seconds = resources.getIntArray(R.array.duration_limit_seconds)
+            .takeIf { it.isNotEmpty() } ?: intArrayOf(30)
+
+        val labels = seconds.map { sec ->
+            val mb = estimatePartMb(sec)
+            val overflow = if (mb > WA_PART_BUDGET_KB / 1024.0) "  !" else ""
+            String.format(Locale.US, "%d detik  (~%.1f MB)%s", sec, mb, overflow)
+        }
+
+        val adapter = ArrayAdapter(this, R.layout.status_spinner_item, labels)
+        adapter.setDropDownViewResource(R.layout.status_spinner_dropdown_item)
+        spinnerDuration.adapter = adapter
+
+        val defaultIndex = seconds.indexOf(30).let { if (it >= 0) it else 0 }
+        splitIntervalSec = seconds[defaultIndex]
+        spinnerDuration.setSelection(defaultIndex, false)
+
+        spinnerDuration.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                splitIntervalSec = seconds.getOrElse(position) { 30 }
+                if (isVideoMode && selectedUri != null) updateVideoSplitPreview()
+            }
+
+            override fun onNothingSelected(parent: AdapterView<*>?) = Unit
+        }
+    }
+
     private fun buildVideoPlan(): VideoPlan {
-        val isHorizontal = origDisplayW > origDisplayH
-        val forcePortrait = rbRotate90.isChecked && isHorizontal
+        val forcePortrait = rbRotate90.isChecked
 
-        val transposeFilter: String?
-        val rotateDesc: String
-        var rotatedW: Int
-        var rotatedH: Int
+        // Rotasi dari metadata container diterapkan manual (input dijalankan dengan -noautorotate),
+        // supaya ffmpeg tidak memutar dua kali. Double-rotation inilah yang membuat output
+        // force-portrait jadi gepeng/buram.
+        val rotationFilter = when (metaRotation) {
+            90 -> "transpose=1"
+            180 -> "transpose=2,transpose=2"
+            270 -> "transpose=2"
+            else -> null
+        }
 
+        val baseW: Int
+        val baseH: Int
+        if (metaRotation == 90 || metaRotation == 270) {
+            baseW = if (rawW > 0) rawH else 720
+            baseH = if (rawH > 0) rawW else 1280
+        } else {
+            baseW = if (rawW > 0) rawW else 720
+            baseH = if (rawH > 0) rawH else 1280
+        }
+
+        val rotateLandscape = forcePortrait && baseW > baseH
+        val interval = splitIntervalSec.coerceAtLeast(1)
+
+        val outW: Int
+        val outH: Int
         if (forcePortrait) {
-            // Metadata rotation is applied by the encoder, so swap the working dimensions too.
-            transposeFilter = "transpose=1"
-            rotateDesc = "Auto Portrait"
-            rotatedW = origDisplayH
-            rotatedH = origDisplayW
+            // Kanvas status WhatsApp: portrait penuh 1080x1920 (HD).
+            outW = 1080
+            outH = 1920
         } else {
-            transposeFilter = null
-            rotateDesc = "Original"
-            rotatedW = origDisplayW
-            rotatedH = origDisplayH
+            val s = min(
+                1f,
+                min(1080f / min(baseW, baseH).toFloat(), 1920f / max(baseW, baseH).toFloat())
+            )
+            outW = ((baseW * s).toInt() / 2) * 2
+            outH = ((baseH * s).toInt() / 2) * 2
         }
 
-        if (rotatedW <= 0) rotatedW = 720
-        if (rotatedH <= 0) rotatedH = 1280
+        val safeW = if (outW < 2) 720 else outW
+        val safeH = if (outH < 2) 1280 else outH
 
-        val maxSide = maxOf(rotatedW, rotatedH)
-        val minSide = minOf(rotatedW, rotatedH)
+        val desc = if (forcePortrait) "Force Portrait 1080x1920 (HD)" else "Original $safeW x $safeH"
 
-        val scale = if (maxSide > 1920 || minSide > 1080) {
-            minOf(1920f / maxSide.toFloat(), 1080f / minSide.toFloat())
-        } else {
-            1.0f
-        }
-
-        var targetW = ((rotatedW * scale).toInt() / 2) * 2
-        var targetH = ((rotatedH * scale).toInt() / 2) * 2
-        if (targetW < 2) targetW = 720
-        if (targetH < 2) targetH = 1280
-
-        val interval = 30
-        val effectiveClipSec = minOf(max(1, videoDurationSec), interval)
-        val bitrateKbps = ((9.5 * 8192.0) / effectiveClipSec - 128.0).toInt().coerceIn(3500, 7500)
-
-        return VideoPlan(targetW, targetH, transposeFilter, rotateDesc, bitrateKbps, interval)
+        return VideoPlan(
+            outW = safeW,
+            outH = safeH,
+            rotationFilter = rotationFilter,
+            rotateLandscape = rotateLandscape,
+            fillCanvas = forcePortrait,
+            rotateDesc = desc,
+            bitrateKbps = bitrateFor(interval),
+            splitIntervalSec = interval
+        )
     }
 
     private fun analyzeVideo(uri: Uri) {
+        val retriever = MediaMetadataRetriever()
         try {
-            val retriever = MediaMetadataRetriever()
             retriever.setDataSource(this, uri)
             val durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
-            val rawW = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull() ?: 720
-            val rawH = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull() ?: 1280
+            val metaW = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull() ?: 720
+            val metaH = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull() ?: 1280
             val metaRot = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toIntOrNull() ?: 0
-            retriever.release()
 
-            if (metaRot == 90 || metaRot == 270) {
+            rawW = if (metaW > 0) metaW else 720
+            rawH = if (metaH > 0) metaH else 1280
+            metaRotation = if (metaRot == 90 || metaRot == 180 || metaRot == 270) metaRot else 0
+
+            if (metaRotation == 90 || metaRotation == 270) {
                 origDisplayW = rawH
                 origDisplayH = rawW
             } else {
@@ -171,17 +251,31 @@ class MainActivity : AppCompatActivity() {
             btnShareWa.isEnabled = false
         } catch (e: Exception) {
             tvMediaInfo.text = "Error reading video: ${e.message}"
+        } finally {
+            retriever.release()
         }
     }
 
     private fun updateVideoSplitPreview() {
         val plan = buildVideoPlan()
-        val totalParts = ceil(videoDurationSec.toDouble() / plan.splitIntervalSec.toDouble()).toInt()
+        val totalParts = max(1, ceil(videoDurationSec.toDouble() / plan.splitIntervalSec.toDouble()).toInt())
+        val partMb = estimatePartMb(plan.splitIntervalSec)
+        val limitMb = WA_PART_BUDGET_KB / 1024.0
+
+        val warnings = buildString {
+            if (partMb > limitMb) {
+                append(String.format(Locale.US, "\n> ! %.1f MB/part > %.0f MB: WA akan re-encode (buram).", partMb, limitMb))
+            }
+            if (plan.splitIntervalSec > 30) {
+                append("\n> ! Status WA normalnya memotong video >30 detik.")
+            }
+        }
 
         tvMediaInfo.text = "> SONYBAE DEFINITIVE ENGINE (VIDEO)\n" +
                 "> Source: ${origDisplayW}x${origDisplayH} | ${videoDurationSec}s | ${savedOriginalSizeKb} KB\n" +
-                "> Target: ${plan.outW}x${plan.outH} (BRAVO HD ENGINE V1)\n" +
-                "> Config: ${plan.rotateDesc} | Parts: $totalParts (@${plan.splitIntervalSec}s)"
+                "> Target: ${plan.outW}x${plan.outH} @ ${plan.bitrateKbps} kbps (BRAVO HD ENGINE)\n" +
+                "> Config: ${plan.rotateDesc} | $totalParts part @ ${plan.splitIntervalSec}s" +
+                warnings
     }
 
     private fun analyzePhoto(uri: Uri) {
@@ -228,11 +322,18 @@ class MainActivity : AppCompatActivity() {
 
                 val plan = buildVideoPlan()
                 val interval = plan.splitIntervalSec
-                val gopFrames = 30 * minOf(max(1, videoDurationSec), interval)
 
                 val filters = ArrayList<String>()
-                plan.transposeFilter?.let { filters.add(it) }
-                filters.add("scale=${plan.outW}:${plan.outH}:flags=lanczos")
+                plan.rotationFilter?.let { filters.add(it) }
+                if (plan.rotateLandscape) filters.add("transpose=1")
+                if (plan.fillCanvas) {
+                    // Isi penuh kanvas 1080x1920 tanpa distorsi: scale-up lalu crop center.
+                    filters.add("scale=${plan.outW}:${plan.outH}:flags=lanczos:force_original_aspect_ratio=increase")
+                    filters.add("crop=${plan.outW}:${plan.outH}")
+                } else {
+                    filters.add("scale=${plan.outW}:${plan.outH}:flags=lanczos")
+                }
+                filters.add("setsar=1")
                 filters.add("format=yuv420p")
                 val vfChain = filters.joinToString(",")
 
@@ -249,13 +350,15 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
 
-                val cmd = "-y -i \"$safeInputPath\" " +
+                val cmd = "-y -noautorotate -i \"$safeInputPath\" " +
                         "-vf \"$vfChain\" " +
-                        "-r 30 -g $gopFrames " +
-                        "-c:v libx264 -preset fast -profile:v high -level 4.2 -threads 8 " +
-                        "-crf 15 -maxrate ${plan.bitrateKbps}k -bufsize ${plan.bitrateKbps * 2}k " +
-                        "-c:a aac -b:a 128k -ac 2 " +
-                        "-f segment -segment_time $interval -reset_timestamps 1 " +
+                        "-r 30 -vsync cfr " +
+                        "-g 60 -keyint_min 30 -sc_threshold 0 " +
+                        "-force_key_frames \"expr:gte(t,n_forced*$interval)\" " +
+                        "-c:v libx264 -preset medium -profile:v high -level 4.2 -threads 8 " +
+                        "-b:v ${plan.bitrateKbps}k -maxrate ${plan.bitrateKbps}k -bufsize ${plan.bitrateKbps * 2}k " +
+                        "-c:a aac -b:a 128k -ac 2 -ar 44100 " +
+                        "-f segment -segment_format mp4 -segment_time $interval -reset_timestamps 1 " +
                         "\"$outputPattern\""
 
                 val session = FFmpegKit.execute(cmd)
@@ -267,8 +370,13 @@ class MainActivity : AppCompatActivity() {
                             ?.sortedBy { it.name } ?: emptyList()
 
                         outputFiles.addAll(generated)
+                        val totalMb = generated.sumOf { it.length() } / 1024.0 / 1024.0
                         progressBar.progress = 100
-                        tvStatusLog.text = "System: Video Compression Complete!"
+                        tvStatusLog.text = String.format(
+                            Locale.US,
+                            "System: Selesai — %d part, %.1f MB, %dx%d @ %d kbps",
+                            generated.size, totalMb, plan.outW, plan.outH, plan.bitrateKbps
+                        )
                         btnShareWa.isEnabled = outputFiles.isNotEmpty()
                     } else {
                         tvStatusLog.text = "Error: Video Compression Failed. ${session.failStackTrace}"
@@ -280,6 +388,9 @@ class MainActivity : AppCompatActivity() {
                     tvStatusLog.text = "Error: ${e.message}"
                     btnProcess.isEnabled = true
                 }
+            } finally {
+                // Hentikan callback statistik agar run berikutnya tidak menimpa UI dari thread lama.
+                FFmpegKitConfig.enableStatisticsCallback { }
             }
         }
     }
@@ -410,5 +521,11 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         scope.cancel()
+    }
+
+    companion object {
+        /** Batas aman ukuran 1 video status WhatsApp (~16 MB) dalam KB. */
+        private const val WA_PART_BUDGET_KB = 15500.0
+        private const val AUDIO_KBPS = 128.0
     }
 }
