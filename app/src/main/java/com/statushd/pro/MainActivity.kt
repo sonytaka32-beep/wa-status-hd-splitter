@@ -8,7 +8,6 @@ import android.media.ExifInterface
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Bundle
-import android.view.View
 import android.provider.OpenableColumns
 import android.widget.*
 import androidx.activity.result.contract.ActivityResultContracts
@@ -33,8 +32,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnShareWa: Button
     private lateinit var rgRotateMode: RadioGroup
     private lateinit var rbRotate90: RadioButton
-    private lateinit var rbKeepOriginal: RadioButton
-    private lateinit var spinnerDurationLimit: Spinner
 
     private var selectedUri: Uri? = null
     private var isVideoMode: Boolean = true
@@ -43,19 +40,15 @@ class MainActivity : AppCompatActivity() {
     private var origDisplayH: Int = 1280
     private var savedOriginalSizeKb: Long = 0L
 
-    private val limitOptions = arrayOf("Full Video (No Limit)", "30 Seconds (1 Part)", "1 Minute (2 Parts)", "1 Minute 30s (3 Parts)", "2 Minutes (4 Parts)", "2 Minutes 30s (5 Parts)", "3 Minutes (6 Parts)", "5 Minutes (10 Parts)")
-    private val limitValuesSec = intArrayOf(0, 30, 60, 90, 120, 150, 180, 300)
-
     private val outputFiles = ArrayList<File>()
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
     data class VideoPlan(
         val outW: Int,
         val outH: Int,
-        val transposeFilter: String,
+        val transposeFilter: String?,
         val rotateDesc: String,
-        val bitrateKbps: Int,
-        val processDurationLimitSec: Int
+        val bitrateKbps: Int
     )
 
     private val pickVideoLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
@@ -76,23 +69,11 @@ class MainActivity : AppCompatActivity() {
         btnProcess = findViewById(R.id.btnProcess)
         btnShareWa = findViewById(R.id.btnShareWa)
         rgRotateMode = findViewById(R.id.rgRotateMode)
-        rbRotate90 = findViewById(R.id.rbRotate90)
-        rbKeepOriginal = findViewById(R.id.rbKeepOriginal)
-        spinnerDurationLimit = findViewById(R.id.spinnerDurationLimit)
-
-        val spinnerAdapter = ArrayAdapter(this, R.layout.status_spinner_item, limitOptions)
-        spinnerAdapter.setDropDownViewResource(R.layout.status_spinner_dropdown_item)
-        spinnerDurationLimit.adapter = spinnerAdapter
-
-        spinnerDurationLimit.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(parent: AdapterView<*>, view: View?, pos: Int, id: Long) {
-                if (isVideoMode && selectedUri != null) updateVideoSplitPreview()
-            }
-            override fun onNothingSelected(parent: AdapterView<*>) {}
-        }
+        rbRotateAuto = findViewById(R.id.rbRotateAuto)
 
         findViewById<Button>(R.id.btnPickVideo).setOnClickListener { pickVideoLauncher.launch("video/*") }
         findViewById<Button>(R.id.btnPickPhoto).setOnClickListener { pickPhotoLauncher.launch("image/*") }
+
         rgRotateMode.setOnCheckedChangeListener { _, _ -> if (isVideoMode && selectedUri != null) updateVideoSplitPreview() }
 
         btnProcess.setOnClickListener {
@@ -112,38 +93,30 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun buildVideoPlan(): VideoPlan {
-        var transposeStr = ""
-        var rotDesc = "Original"
-        var rotatedW = origDisplayW
-        var rotatedH = origDisplayH
+        val isHorizontal = origDisplayW > origDisplayH
 
-        if (rbRotate90.isChecked) {
-            transposeStr = "transpose=1,"
-            rotDesc = "Force Portrait (Rotated 90°)"
-            val tempW = rotatedW
-            rotatedW = rotatedH
-            rotatedH = tempW
+        val (transposeFilter, rotDesc, rotatedW, rotatedH) = when {
+            rbRotateAuto.isChecked && isHorizontal -> Quadruple("transpose=1", "Auto Portrait", origDisplayH, origDisplayW)
+            else -> Quadruple(null, "Original", origDisplayW, origDisplayH)
         }
 
-        // KUNCI EMAS: SAMAKAN 100% DENGAN LAYAR (NATIVE SOURCE RESOLUTION)
-        // Tanpa upscaling/downscaling, hanya memastikan angka resolusi genap (dibagi 2).
-        var targetW = (rotatedW / 2) * 2
-        var targetH = (rotatedH / 2) * 2
-        
-        // Fallback jika tidak terbaca (biasanya 720x1612 untuk HP kamu)
-        if (targetW < 2) targetW = 720
-        if (targetH < 2) targetH = 1612
+        val maxSide = maxOf(rotatedW, rotatedH)
+        val minSide = minOf(rotatedW, rotatedH)
 
-        val limitSelectionSec = limitValuesSec[spinnerDurationLimit.selectedItemPosition]
-        val processDurationLimit = if (limitSelectionSec > 0) minOf(videoDurationSec, limitSelectionSec) else videoDurationSec
+        val scale = if (maxSide > 1920 || minSide > 1080) {
+            minOf(1920f / maxSide.toFloat(), 1080f / minSide.toFloat())
+        } else { 1.0f }
+
+        var targetW = ((rotatedW * scale).toInt() / 2) * 2
+        var targetH = ((rotatedH * scale).toInt() / 2) * 2
+        if (targetW < 2) targetW = 720
+        if (targetH < 2) targetH = 1280
 
         val interval = 30
-        val effectiveClipSec = minOf(max(1, processDurationLimit), interval)
-        
-        // BITRATE BRAVO HD SAKTI (3500k - 7500k) DIKEMBALIKAN!
+        val effectiveClipSec = minOf(max(1, videoDurationSec), interval)
         val bitrateKbps = ((9.5 * 8192.0) / effectiveClipSec - 128.0).toInt().coerceIn(3500, 7500)
 
-        return VideoPlan(targetW, targetH, transposeStr, rotDesc, bitrateKbps, processDurationLimit)
+        return VideoPlan(targetW, targetH, transposeStr, rotDesc, bitrateKbps)
     }
 
     private fun analyzeVideo(uri: Uri) {
@@ -176,14 +149,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateVideoSplitPreview() {
+        val interval = 30
+        val totalParts = ceil(videoDurationSec.toDouble() / interval.toDouble()).toInt()
         val plan = buildVideoPlan()
-        val totalParts = ceil(plan.processDurationLimitSec.toDouble() / 30.0).toInt()
-        val durText = if (plan.processDurationLimitSec == videoDurationSec) "${videoDurationSec}s (Full)" else "${plan.processDurationLimitSec}s (Trimmed)"
         
         tvMediaInfo.text = "> SONYBAE DEFINITIVE ENGINE (VIDEO)\n" +
                 "> Source: ${origDisplayW}x${origDisplayH} | ${videoDurationSec}s | ${savedOriginalSizeKb} KB\n" +
-                "> Target: Native Screen ${plan.outW}x${plan.outH} (BRAVO 3500k)\n" +
-                "> Config: ${plan.rotateDesc} | Output Parts: $totalParts (@30s)"
+                "> Target: ${plan.outW}x${plan.outH} (BRAVO HD ENGINE V1)\n" +
+                "> Config: ${plan.rotateDesc} | Parts: $totalParts (@30s)"
     }
 
     private fun analyzePhoto(uri: Uri) {
@@ -220,7 +193,7 @@ class MainActivity : AppCompatActivity() {
         btnProcess.isEnabled = false
         btnShareWa.isEnabled = false
         progressBar.progress = 2
-        tvStatusLog.text = "Injecting BRAVO HD Native Engine..."
+        tvStatusLog.text = "Injecting BRAVO HD Engine (Anti-Compression)..."
 
         scope.launch(Dispatchers.IO) {
             val outDir = prepareOutputDir()
@@ -228,30 +201,31 @@ class MainActivity : AppCompatActivity() {
             val outputPattern = File(outDir, "StatusHD_Part_%03d.mp4").absolutePath
 
             val plan = buildVideoPlan()
-            val interval = 30
-            val gopFrames = 30 * interval
-            
-            val vfFilter = "${plan.transposeFilter}scale=${plan.outW}:${plan.outH}:flags=lanczos,format=yuv420p"
-            val timeLimitCmd = if (plan.processDurationLimitSec < videoDurationSec) "-t ${plan.processDurationLimitSec}" else ""
+            val gopFrames = 30 * minOf(videoDurationSec, interval)
+
+            val filters = ArrayList<String>()
+            if (plan.transposeFilter != null) {
+                filters.add(plan.transposeFilter)
+            }
+            filters.add("scale=${plan.outW}:${plan.outH}:flags=lanczos")
+            filters.add("format=yuv420p")
+            val vfChain = filters.joinToString(",")
 
             FFmpegKitConfig.enableStatisticsCallback { stats: Statistics ->
                 val timeSec = (stats.time / 1000.0).toInt()
-                val pct = if (plan.processDurationLimitSec > 0) ((timeSec * 100) / plan.processDurationLimitSec).coerceIn(2, 99) else 50
+                val pct = if (videoDurationSec > 0) ((timeSec * 100) / videoDurationSec).coerceIn(2, 99) else 50
                 runOnUiThread {
                     progressBar.progress = pct
-                    tvStatusLog.text = "Encoding Native HD: $pct% (${timeSec}s / ${plan.processDurationLimitSec}s)"
+                    tvStatusLog.text = "Memproses Video HD+ (${plan.outW}x${plan.outH}): $pct% (${timeSec}s / ${videoDurationSec}s)"
                 }
             }
 
-            // KODE SAKTI BRAVO HD 3500K - 7500K (NATIVE RESOLUTION)
             val cmd = "-y -i \"$safeInputPath\" " +
-                    "$timeLimitCmd " +
                     "-vf \"$vfFilter\" " +
                     "-r 30 -g $gopFrames " +
-                    "-c:v libx264 -preset medium -profile:v high -level 4.2 -threads 8 " +
+                    "-c:v libx264 -preset fast -profile:v high -level 4.2 -threads 8 " +
                     "-crf 15 -maxrate ${plan.bitrateKbps}k -bufsize ${plan.bitrateKbps * 2}k " +
-                    "-bf 3 -refs 4 -aq-mode 3 " +
-                    "-c:a aac -b:a 192k -ar 48000 -ac 2 " +
+                    "-c:a aac -b:a 128k -ac 2 " +
                     "-f segment -segment_time $interval -reset_timestamps 1 " +
                     "\"$outputPattern\""
 
@@ -265,10 +239,10 @@ class MainActivity : AppCompatActivity() {
 
                     outputFiles.addAll(generated)
                     progressBar.progress = 100
-                    tvStatusLog.text = "System: Native HD Payload Successfully Injected!"
+                    tvStatusLog.text = "System: Video Compression Complete!"
                     btnShareWa.isEnabled = outputFiles.isNotEmpty()
                 } else {
-                    tvStatusLog.text = "Error: Injection Failed. " + session.failStackTrace
+                    tvStatusLog.text = "Error: Video Compression Failed. ${session.failStackTrace}"
                 }
                 btnProcess.isEnabled = true
             }
@@ -308,9 +282,6 @@ class MainActivity : AppCompatActivity() {
                 var pH = (bitmap.height * scale).toInt()
                 if (pW % 2 != 0) pW++
                 if (pH % 2 != 0) pH++
-
-                val scaled = Bitmap.createScaledBitmap(bitmap, pW, pH, true)
-                if (scaled != bitmap) bitmap.recycle()
 
                 val tempPng = File(cacheDir, "hd_frame.png")
                 FileOutputStream(tempPng).use { scaled.compress(Bitmap.CompressFormat.PNG, 100, it) }
