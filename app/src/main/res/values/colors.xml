@@ -9,4 +9,6 @@
     <color name="sa_cream">#F2E8CF</color>
     <color name="sa_muted">#A8A58F</color>
     <color name="sa_shadow">#080A07</color>
+    <!-- Radio button tint for the rotation-mode radios in activity_main.xml -->
+    <color name="status_radio_tint">#D5A64A</color>
 </resources>

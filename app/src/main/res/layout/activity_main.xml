@@ -5,6 +5,20 @@
     android:layout_height="match_parent"
     android:background="@drawable/bg_status_screen">
 
+    <!-- Full-bleed artwork: centre-cropped at native resolution so it stays crisp (no stretch, no re-encode). -->
+    <ImageView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:contentDescription="@null"
+        android:scaleType="centerCrop"
+        android:src="@drawable/bg_status_art" />
+
+    <!-- Light scrim keeps the green San Andreas UI readable on top of the busy poster. -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#2E000000" />
+
     <ScrollView
         android:layout_width="match_parent"
         android:layout_height="match_parent"
